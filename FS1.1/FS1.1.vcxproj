@@ -132,6 +132,15 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="FS1.1.cpp" />
+    <ClCompile Include="PlayingState.cpp" />
+    <ClCompile Include="Playingstate2.cpp" />
+    <ClCompile Include="SettingsState.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="GameState.h" />
+    <ClInclude Include="PlayingState.h" />
+    <ClInclude Include="Playingstate2.h" />
+    <ClInclude Include="SettingsState.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
