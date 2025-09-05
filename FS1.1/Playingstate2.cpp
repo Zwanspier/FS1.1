@@ -2,10 +2,16 @@
 
 void handlePlayingState2(RenderWindow& window, bool& running, GameState& state)
 {
-	window.clear(Color::Green);
+	extern GameState previousState;
+
+	window.clear(Color::Blue);
 	window.display();
 	
-	if (Keyboard::isKeyPressed(Keyboard::Key::Escape)) {
+	if (Keyboard::isKeyPressed(Keyboard::Key::M)) {
 		state = MENU;
+	}
+	if (Keyboard::isKeyPressed(Keyboard::Key::F1)) {
+		previousState = PLAYING2;
+		state = SETTINGS;
 	}
 }

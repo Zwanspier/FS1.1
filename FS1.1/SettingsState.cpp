@@ -1,14 +1,18 @@
 #include "SettingsState.h"
 
+int framerateIndex = 2; // Default to 60 (index 2 in framerateOptions)
+int framerateOptions[] = { 0, 30, 60, 120, 144, 240 };
+
 void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
 {
 	static int selected = 0;
 	static bool vsyncEnabled = false;
-	static int frameratelimit = 60;
 	static float gamma = 1.0f;
 	static bool upPressed = false, downPressed = false, leftPressed = false, rightPressed = false, enterPressed = false;
 	static bool mouseLeftPressed = false;
 	static bool mouseRightPressed = false;
+
+	extern GameState previousState;
 
 	const vector<string> options = { "VSync: ", "Framerate Limit: ", "Back" };
 
@@ -33,7 +37,7 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
 			text.setString(options[i] + (vsyncEnabled ? "On" : "Off"));
 		}
 		else if (i == 1) {
-			text.setString(options[i] + to_string(frameratelimit));
+			text.setString(options[i] + to_string(framerateOptions[framerateIndex]));
 		}
 		
 		textObjects.push_back(text);
@@ -62,11 +66,11 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
 
 		if (selected == 0) {
 			vsyncEnabled = !vsyncEnabled;
-			window.setVerticalSyncEnabled(vsyncEnabled);
+			// window.setVerticalSyncEnabled(vsyncEnabled); // Optionally keep or remove
 		}
 		else if (selected == 1) {
-			if (frameratelimit < 240) frameratelimit += 10;
-			window.setFramerateLimit(frameratelimit);
+			if (framerateIndex < static_cast<int>(std::size(framerateOptions)) - 1) framerateIndex++;
+			// Do not call window.setFramerateLimit
 		}
 		else if (selected == 2) {
 			state = MENU;
@@ -81,8 +85,8 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
 		mouseRightPressed = true;
 
 		if (selected == 1) {
-			if (frameratelimit > 0) frameratelimit -= 10;
-			window.setFramerateLimit(frameratelimit);
+			if (framerateIndex > 0) framerateIndex--;
+			// Do not call window.setFramerateLimit
 		}
 	}
 	else if (!isMouseRightButtonPressed) {
@@ -110,7 +114,7 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
 
 	if (Keyboard::isKeyPressed(Keyboard::Key::A)) {
 		if (!leftPressed) {
-			if (selected == 1 && frameratelimit > 0) frameratelimit -= 10;
+			if (selected == 1 && framerateIndex > 0) framerateIndex--;
 			leftPressed = true;
 		}
 	}
@@ -118,7 +122,7 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
 
 	if (Keyboard::isKeyPressed(Keyboard::Key::D)) {
 		if (!rightPressed) {
-			if (selected == 1 && frameratelimit < 240) frameratelimit += 10;
+			if (selected == 1 && framerateIndex < static_cast<int>(std::size(framerateOptions)) - 1) framerateIndex++;
 			rightPressed = true;
 		}
 	}
@@ -128,19 +132,16 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
 		if (!enterPressed) {
 			if (selected == 0) {
 				vsyncEnabled = !vsyncEnabled;
-				window.setVerticalSyncEnabled(vsyncEnabled);
-			}
-			else if (selected == 1) {
-				window.setFramerateLimit(frameratelimit);
+				// window.setVerticalSyncEnabled(vsyncEnabled); // Optionally keep or remove
 			}
 			else if (selected == 2) {
-				state = MENU;
+				state = previousState;
 			}
 			enterPressed = true;
 		}
 	} else enterPressed = false;
 
 	if (Keyboard::isKeyPressed(Keyboard::Key::Escape)) {
-		state = MENU;
+		state = previousState;
 	}
 }

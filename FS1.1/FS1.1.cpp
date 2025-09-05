@@ -8,11 +8,12 @@
 using namespace sf;
 using namespace std;
 
+GameState previousState = MENU;
 
 int main()
 {
     // Create the main application window with a fixed size and title
-    RenderWindow window(VideoMode({ 1280, 1024 }), "The Menu Game");
+    RenderWindow window(VideoMode({ 1280, 1024 }), "/Settings Puzzles/");
 
 	static bool mouseLeftPressed = false;
 
@@ -23,6 +24,7 @@ int main()
     const vector<string> options = { "Start", "Settings", "Exit" };
     int selected = 0; // Index of the currently selected menu option
     GameState state = MENU; // Current state of the game
+
 
     bool running = true; // Controls the main game loop
 
@@ -39,7 +41,7 @@ int main()
     }
 
     // Create and configure the title text
-    Text title(font, "The Menu Game", 100);
+    Text title(font, "/Setting Puzzles/", 100);
     title.setStyle(Text::Bold | Text::Underlined);
     title.setFillColor(Color::Blue);
     auto titleBounds = title.getLocalBounds();
@@ -153,7 +155,6 @@ int main()
             // Delegate to the settings state handler
             handleSettingsState(window, running, state);
         }
-
         window.display(); // Display the rendered frame
     }
     return 0;
