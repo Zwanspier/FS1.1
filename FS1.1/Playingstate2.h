@@ -5,4 +5,5 @@
 using namespace sf;
 using namespace std;
 
+// Handles the main game loop and rendering for the maze game mode.
 void handlePlayingState2(RenderWindow& window, bool& running, GameState& state);
