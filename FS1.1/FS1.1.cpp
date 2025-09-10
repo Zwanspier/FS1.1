@@ -2,6 +2,8 @@
 #include <iostream>
 #include "PlayingState.h"
 #include "Playingstate2.h"
+#include "PlayingState3.h"
+#include "PreLevelState.h"
 #include "SettingsState.h"
 #include "GameState.h"
 
@@ -48,22 +50,14 @@ int main()
     title.setOrigin(Vector2f(titleBounds.size.x / 2.f, titleBounds.size.y / 2.f));
     title.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 4.f));
 
-    vector<string> controlLines = {
-        "Controls:",
-        "W/S - Navigate menu",
-        "Enter/Left Click - Select",
-        "W/A/S/D - Move in maze",
-        "M - Return to Menu",
-        "F1 - Open Settings",
-    };
-    vector<Text> controlTexts;
-    for (size_t i = 0; i < controlLines.size(); ++i) {
-        Text t(font, controlLines[i], 28);
-        t.setFillColor(Color::White);
-        t.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 1.5f + i * 36.f));
-        t.setOrigin(Vector2f(t.getLocalBounds().size.x / 2.f, 0));
-        controlTexts.push_back(t);
-    }
+    // Create permanent F1 settings hint text
+    Text settingsHint(font, "F1 - Settings", 24);
+    settingsHint.setFillColor(Color::White);
+	settingsHint.setOutlineColor(Color::Black);
+	settingsHint.setOutlineThickness(5.f);
+    auto hintBounds = settingsHint.getLocalBounds();
+    settingsHint.setOrigin(Vector2f(hintBounds.size.x, 0)); // Right-aligned
+    settingsHint.setPosition(Vector2f(window.getSize().x - 20.f, 20.f)); // Top-right corner with 20px padding
 
     // Create a red circle to indicate the selected menu option.
     CircleShape selector(20.f);
@@ -102,7 +96,7 @@ int main()
             if (isMouseLeftButtonPressed && !mouseLeftPressed) {
                 mouseLeftPressed = true;
                 switch (selected) {
-                case 0: state = PLAYING; break;   // Start game
+                case 0: state = PRELEVEL1; break;   // Start game (go to pre-level screen)
                 case 1: state = SETTINGS; break;  // Open settings
                 case 2: state = EXIT; window.close(); break; // Exit game
                 }
@@ -135,7 +129,7 @@ int main()
             if (Keyboard::isKeyPressed(Keyboard::Key::Enter)) {
                 if (!enterPressed) {
                     switch (selected) {
-                    case 0: state = PLAYING; break;   // Start game
+                    case 0: state = PRELEVEL1; break;   // Start game (go to pre-level screen)
                     case 1: state = SETTINGS; break;  // Open settings
                     case 2: state = EXIT; window.close(); break; // Exit game
                     }
@@ -159,25 +153,41 @@ int main()
             Vector2f pos = menuTexts[selected].getPosition();
             selector.setPosition(Vector2f(pos.x - 200.f, pos.y - 8.f));
             window.draw(selector);
-
-            // Draw control instructions below the menu
-            for (const auto& t : controlTexts) {
-                window.draw(t);
-            }
+        }
+        else if (state == PRELEVEL1) {
+            // Show pre-level screen for level 1
+            handlePreLevelState(window, running, state, PLAYING);
         }
         else if (state == PLAYING) {
             // Delegate to the scrolling text state handler.
             handlePlayingState(window, running, state);
         }
+        else if (state == PRELEVEL2) {
+            // Show pre-level screen for level 2
+            handlePreLevelState(window, running, state, PLAYING2);
+        }
         else if (state == PLAYING2) {
             // Delegate to the maze game state handler.
             handlePlayingState2(window, running, state);
         }
+        else if (state == PRELEVEL3) {
+            // Show pre-level screen for level 3
+            handlePreLevelState(window, running, state, PLAYING3);
+        }
+        else if (state == PLAYING3) {
+            handlePlayingState3(window, running, state);
+		}
         else if (state == SETTINGS) {
             // Delegate to the settings state handler.
             handleSettingsState(window, running, state);
         }
-        window.display(); // Display the rendered frame.
+
+        // Draw the permanent settings hint on all states except settings
+        if (state != SETTINGS) {
+            window.draw(settingsHint);
+        }
+
+        window.display(); // Single display call per frame
     }
     return 0;
 }

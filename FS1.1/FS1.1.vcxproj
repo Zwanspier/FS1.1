@@ -135,6 +135,8 @@
     <ClCompile Include="Maze.cpp" />
     <ClCompile Include="PlayingState.cpp" />
     <ClCompile Include="Playingstate2.cpp" />
+    <ClCompile Include="PlayingState3.cpp" />
+    <ClCompile Include="PreLevelState.cpp" />
     <ClCompile Include="SettingsState.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -142,6 +144,8 @@
     <ClInclude Include="Maze.h" />
     <ClInclude Include="PlayingState.h" />
     <ClInclude Include="Playingstate2.h" />
+    <ClInclude Include="PlayingState3.h" />
+    <ClInclude Include="PreLevelState.h" />
     <ClInclude Include="SettingsState.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

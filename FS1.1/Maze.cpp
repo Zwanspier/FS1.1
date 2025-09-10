@@ -18,6 +18,10 @@ Maze::Maze(int screenWidth, int screenHeight, int cs) : cellSize(cs) {
     player.setRadius(cellSize / 4.0f);
     player.setFillColor(Color::Red);
     player.setOrigin(Vector2f(player.getRadius(), player.getRadius()));
+    
+    // Use a consistent speed that feels good regardless of cell size
+    // Speed is in cells per second rather than pixels per second
+    playerSpeed = 4.0f * cellSize; // 4 cells per second, scaled to pixels
 }
 
 // Generate a new random maze using recursive backtracking.
@@ -78,16 +82,34 @@ void Maze::updatePlayer(float deltaTime, bool up, bool down, bool left, bool rig
         movement.y *= 0.707f;
     }
     
-    // Calculate new position.
-    Vector2f newPos = playerPixelPos + movement * playerSpeed * deltaTime;
+    // Calculate the desired movement for this frame
+    Vector2f desiredMovement = movement * playerSpeed * deltaTime;
     
-    // Only move if the new position is valid (no wall collision).
-    if (canMoveTo(newPos.x, newPos.y)) {
-        playerPixelPos = newPos;
-        // Update grid position for logic (e.g., win detection).
-        playerPos.x = static_cast<int>(playerPixelPos.x / cellSize);
-        playerPos.y = static_cast<int>(playerPixelPos.y / cellSize);
+    // Try to move in both X and Y directions separately for smoother collision handling
+    Vector2f newPos = playerPixelPos;
+    
+    // Try horizontal movement first
+    if (desiredMovement.x != 0) {
+        Vector2f testPos = Vector2f(playerPixelPos.x + desiredMovement.x, playerPixelPos.y);
+        if (canMoveTo(testPos.x, testPos.y)) {
+            newPos.x = testPos.x;
+        }
     }
+    
+    // Then try vertical movement
+    if (desiredMovement.y != 0) {
+        Vector2f testPos = Vector2f(newPos.x, playerPixelPos.y + desiredMovement.y);
+        if (canMoveTo(testPos.x, testPos.y)) {
+            newPos.y = testPos.y;
+        }
+    }
+    
+    // Update position
+    playerPixelPos = newPos;
+    
+    // Update grid position for logic (e.g., win detection).
+    playerPos.x = static_cast<int>(playerPixelPos.x / cellSize);
+    playerPos.y = static_cast<int>(playerPixelPos.y / cellSize);
 }
 
 // Collision detection: check if the player can move to a given pixel position.
@@ -106,27 +128,34 @@ bool Maze::canMoveTo(float x, float y) {
     int topCell = static_cast<int>((y - radius) / cellSize);
     int bottomCell = static_cast<int>((y + radius) / cellSize);
     
+    // Clamp cell indices to valid range
+    leftCell = max(0, min(width - 1, leftCell));
+    rightCell = max(0, min(width - 1, rightCell));
+    topCell = max(0, min(height - 1, topCell));
+    bottomCell = max(0, min(height - 1, bottomCell));
+    
     // Check for wall collisions in all overlapping cells.
     for (int cy = topCell; cy <= bottomCell; ++cy) {
         for (int cx = leftCell; cx <= rightCell; ++cx) {
-            if (cx < 0 || cx >= width || cy < 0 || cy >= height) continue;
-            
             float cellLeft = cx * cellSize;
             float cellRight = (cx + 1) * cellSize;
             float cellTop = cy * cellSize;
             float cellBottom = (cy + 1) * cellSize;
             
-            // Check each wall for collision.
-            if (grid[cy][cx].walls[0] && y - radius < cellTop && x + radius > cellLeft && x - radius < cellRight) {
+            // Add small epsilon for more precise collision detection
+            const float epsilon = 0.1f;
+            
+            // Check each wall for collision with epsilon tolerance
+            if (grid[cy][cx].walls[0] && y - radius < cellTop + epsilon && x + radius > cellLeft && x - radius < cellRight) {
                 return false; // Top wall
             }
-            if (grid[cy][cx].walls[1] && x + radius > cellRight && y + radius > cellTop && y - radius < cellBottom) {
+            if (grid[cy][cx].walls[1] && x + radius > cellRight - epsilon && y + radius > cellTop && y - radius < cellBottom) {
                 return false; // Right wall
             }
-            if (grid[cy][cx].walls[2] && y + radius > cellBottom && x + radius > cellLeft && x - radius < cellRight) {
+            if (grid[cy][cx].walls[2] && y + radius > cellBottom - epsilon && x + radius > cellLeft && x - radius < cellRight) {
                 return false; // Bottom wall
             }
-            if (grid[cy][cx].walls[3] && x - radius < cellLeft && y + radius > cellTop && y - radius < cellBottom) {
+            if (grid[cy][cx].walls[3] && x - radius < cellLeft + epsilon && y + radius > cellTop && y - radius < cellBottom) {
                 return false; // Left wall
             }
         }

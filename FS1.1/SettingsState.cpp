@@ -4,7 +4,7 @@ using namespace sf;
 using namespace std;
 
 // Global settings variables.
-int framerateIndex = 2; // Default to 60 FPS (index 2)
+int framerateIndex = 1; // Default to 60 FPS (index 1)
 int framerateOptions[] = { 30, 60, 120, 144, 240 };
 bool vsyncEnabled = true;
 float gamma = 0.0f; // Start with black walls (invisible)
@@ -13,41 +13,36 @@ std::vector<sf::Vector2u> resolutionOptions = {
     {1280, 720},
     {1600, 900},
     {1920, 1080},
-    {2560, 1440}
+    {2560, 1440},
+    {3840, 2160}
 };
-bool mazeNeedsRegeneration = false; // Add this line
+bool mazeNeedsRegeneration = false;
+bool settingsChanged = false;
 
 // Function to apply all settings changes
 void applySettings(RenderWindow& window) {
     static int lastResolutionIndex = resolutionIndex;
+    static bool lastVsyncEnabled = vsyncEnabled;
 
-    // Apply VSync setting
-    window.setVerticalSyncEnabled(vsyncEnabled);
+    // Check if maze size (resolution) setting changed
+    bool mazeSizeChanged = (resolutionIndex != lastResolutionIndex);
     
-    // Apply framerate limit
-    if (framerateOptions[framerateIndex] > 0) {
-        window.setFramerateLimit(framerateOptions[framerateIndex]);
-    } else {
-        window.setFramerateLimit(0); // No limit
-    }
-    
-    // Apply resolution (recreate window with current settings)
-    auto res = resolutionOptions[resolutionIndex];
-    window.create(VideoMode({res.x, res.y}), "/Settings Puzzles/", Style::Default, State::Fullscreen);
-    
-    // Reapply VSync and framerate after window recreation
-    window.setVerticalSyncEnabled(vsyncEnabled);
-    if (framerateOptions[framerateIndex] > 0) {
-        window.setFramerateLimit(framerateOptions[framerateIndex]);
-    } else {
-        window.setFramerateLimit(0);
-    }
-
-    // Check if resolution changed
-    if (resolutionIndex != lastResolutionIndex) {
-        mazeNeedsRegeneration = true; // Signal maze to regenerate
+    if (mazeSizeChanged) {
+        // Only trigger maze regeneration, don't change window
+        mazeNeedsRegeneration = true;
         lastResolutionIndex = resolutionIndex;
     }
+    
+    // Apply VSync setting (only if changed)
+    if (vsyncEnabled != lastVsyncEnabled) {
+        window.setVerticalSyncEnabled(vsyncEnabled);
+        lastVsyncEnabled = vsyncEnabled;
+    }
+    
+    // Note: We don't apply framerate limit to the window anymore
+    // since it's only used for text speed calculation
+    
+    settingsChanged = true;
 }
 
 // Handles the settings menu, including VSync, framerate, and fake gamma.
@@ -60,8 +55,8 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
 
     extern GameState previousState;
 
-    // Menu options: VSync, Framerate, Gamma, Resolution, Apply Changes, Back
-    const vector<string> options = { "VSync: ", "Framerate Limit: ", "Gamma: ", "Resolution: ", "Apply Changes", "Back" };
+    // Menu options: VSync, Framerate, Gamma, Maze Size, Apply Changes, Back
+    const vector<string> options = { "VSync: ", "Text Speed: ", "Wall Visibility: ", "Maze Size: ", "Apply Changes", "Back" };
 
     static Font font;
     static bool fontLoaded = false;
@@ -93,6 +88,7 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
             text.setString(options[i] + to_string(gammaPercent) + "%");
         }
         else if (i == 3) {
+            // Display maze size instead of actual resolution
             text.setString(options[i] + to_string(resolutionOptions[resolutionIndex].x) + "x" + to_string(resolutionOptions[resolutionIndex].y));
         }
         // Options 4 (Apply Changes) and 5 (Back) use their default text
@@ -138,7 +134,7 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
             applySettings(window);
         }
         else if (selected == 5) {
-            state = MENU;
+            state = previousState;
         }
     }
     else if (!isMouseLeftButtonPressed) {

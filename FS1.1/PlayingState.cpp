@@ -1,25 +1,78 @@
 #include "PlayingState.h"
 #include "SettingsState.h"
+#include <random>
+#include <set>
+#include <map>
+#include <string>
 
-// Main game loop for the scrolling text state.
+// Helper to get a string for a Keyboard::Key
+std::string keyToString(sf::Keyboard::Key key) {
+    // Convert enum to underlying integer, then to char
+    int keyValue = static_cast<int>(key);
+    int aValue = static_cast<int>(sf::Keyboard::Key::A);
+    return std::string(1, static_cast<char>('A' + (keyValue - aValue)));
+}
+
 void handlePlayingState(RenderWindow& window, bool& running, GameState& state)
 {
     static Font font;
     static bool fontLoaded = false;
-    static Text scrollingText(font, "NextLevel = L ", 30);
+    static Text scrollingText(font, "", 30); // Initialize with empty string
     static float textX = 0.0f;
     static float textX2 = 0.0f;
     static Clock clock;
     extern GameState previousState;
+    extern int framerateOptions[];
+    extern int framerateIndex;
+
+    // --- Random key logic ---
+    static bool keyChosen = false;
+    static sf::Keyboard::Key randomKey = sf::Keyboard::Key::Unknown;
+    static bool keyPressed = false;
+
+    // List of keys to avoid (already in use)
+    static std::set<sf::Keyboard::Key> reservedKeys = {
+        sf::Keyboard::Key::M, sf::Keyboard::Key::F1, sf::Keyboard::Key::Escape
+        // Add any other keys you use for menu/settings/etc.
+    };
+
+    // List of candidate keys (A-Z, except reserved)
+    static std::vector<sf::Keyboard::Key> candidateKeys;
+    if (candidateKeys.empty()) {
+        // Use underlying integer values for comparison
+        int aValue = static_cast<int>(sf::Keyboard::Key::A);
+        int zValue = static_cast<int>(sf::Keyboard::Key::Z);
+        
+        for (int k = aValue; k <= zValue; ++k) {
+            sf::Keyboard::Key currentKey = static_cast<sf::Keyboard::Key>(k);
+            if (reservedKeys.count(currentKey) == 0)
+                candidateKeys.push_back(currentKey);
+        }
+    }
+
+    if (!keyChosen) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(0, static_cast<int>(candidateKeys.size()) - 1);
+        randomKey = candidateKeys[dis(gen)];
+        keyChosen = true;
+    }
+    // --- End random key logic ---
 
     if (!fontLoaded) {
         font.openFromFile("arial.ttf");
         scrollingText.setFillColor(Color::White);
+        fontLoaded = true;
         textX = 0.0f;
         textX2 = 0.0f;
-        fontLoaded = true;
         clock.restart();
     }
+
+    // Update the scrolling text to use the random key
+    std::string scrollMsg = "NextLevel = ";
+    scrollMsg += keyToString(randomKey);
+    scrollMsg += " ";
+    scrollingText.setString(scrollMsg);
 
     float deltaTime = clock.restart().asSeconds();
     int framerate = framerateOptions[framerateIndex];
@@ -28,7 +81,7 @@ void handlePlayingState(RenderWindow& window, bool& running, GameState& state)
 
     // Adjust speed based on framerate setting.
     if (framerate > 0)
-        speed = baseSpeed * (60.0f / framerate);
+        speed = baseSpeed * (100.0f / framerate);
     else
         speed = baseSpeed * 2.0f;
 
@@ -59,17 +112,25 @@ void handlePlayingState(RenderWindow& window, bool& running, GameState& state)
             window.draw(scrollingText);
         }
     }
-    window.display();
+    // window.display();
 
     // Handle state transitions.
-    if (Keyboard::isKeyPressed(Keyboard::Key::L)) {
-        state = PLAYING2;
+    if (sf::Keyboard::isKeyPressed(randomKey)) {
+        if (!keyPressed) {
+            state = PRELEVEL2; // Go to pre-level screen before level 2
+            keyChosen = false; // So a new key is chosen next time
+            keyPressed = true;
+        }
+    } else {
+        keyPressed = false;
     }
     if (Keyboard::isKeyPressed(Keyboard::Key::M)) {
         state = MENU;
+        keyChosen = false;
     }
     if (Keyboard::isKeyPressed(Keyboard::Key::F1)) {
         previousState = state;    
         state = SETTINGS;
+        keyChosen = false;
     }
 }
