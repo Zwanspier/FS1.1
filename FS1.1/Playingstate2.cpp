@@ -8,20 +8,20 @@ using namespace std;
 // Function to calculate maze dimensions based on resolution setting
 Vector2u getMazeDimensions() {
     extern int resolutionIndex;
-    extern std::vector<sf::Vector2u> resolutionOptions;
-    
+    extern vector<Vector2u> resolutionOptions;
+
     // Use the resolution setting to determine maze size
     auto mazeSize = resolutionOptions[resolutionIndex];
-    
+
     // Scale down the values to reasonable maze dimensions
     // Divide by a factor to get appropriate cell counts
     int mazeCellsX = mazeSize.x / 40;  // Adjust this divisor as needed
     int mazeCellsY = mazeSize.y / 36;  // Adjust this divisor as needed
-    
+
     // Ensure minimum and maximum maze sizes
     mazeCellsX = max(10, min(100, mazeCellsX));
     mazeCellsY = max(8, min(75, mazeCellsY));
-    
+
     return Vector2u(mazeCellsX, mazeCellsY);
 }
 
@@ -31,10 +31,10 @@ void handlePlayingState2(RenderWindow& window, bool& running, GameState& state)
     // Get maze dimensions based on current resolution setting
     static Vector2u lastMazeDims = getMazeDimensions();
     Vector2u currentMazeDims = getMazeDimensions();
-    
+
     // Calculate cell size to fit the maze in the window
     static int cellSize = min(window.getSize().x / currentMazeDims.x, window.getSize().y / currentMazeDims.y);
-    
+
     static Maze maze(currentMazeDims.x * cellSize, currentMazeDims.y * cellSize, cellSize);
     static bool generated = false;
     static Clock clock;
@@ -44,7 +44,7 @@ void handlePlayingState2(RenderWindow& window, bool& running, GameState& state)
     if (mazeNeedsRegeneration || currentMazeDims.x != lastMazeDims.x || currentMazeDims.y != lastMazeDims.y) {
         // Recalculate cell size for new dimensions
         cellSize = min(window.getSize().x / currentMazeDims.x, window.getSize().y / currentMazeDims.y);
-        
+
         // Create new maze with updated dimensions
         maze = Maze(currentMazeDims.x * cellSize, currentMazeDims.y * cellSize, cellSize);
         maze.generate();
@@ -86,8 +86,8 @@ void handlePlayingState2(RenderWindow& window, bool& running, GameState& state)
     if (maze.isAtExit()) {
         Text winText(font, "You Win! Press ENTER for next level", 50);
         winText.setFillColor(Color::Red);
-		winText.setOutlineColor(Color::Black);
-		winText.setOutlineThickness(2.f);
+        winText.setOutlineColor(Color::Black);
+        winText.setOutlineThickness(2.f);
         auto bounds = winText.getLocalBounds();
         winText.setOrigin(Vector2f(bounds.size.x / 2.f, bounds.size.y / 2.f));
         winText.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 2.f));
@@ -107,7 +107,7 @@ void handlePlayingState2(RenderWindow& window, bool& running, GameState& state)
     }
     if (maze.isAtExit() && Keyboard::isKeyPressed(Keyboard::Key::Enter)) {
         state = PRELEVEL3; // Go to pre-level screen before level 3
-	}
+    }
     if (Keyboard::isKeyPressed(Keyboard::Key::H)) {
         state = PRELEVEL3; // Also go to pre-level screen
     }

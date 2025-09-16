@@ -1,4 +1,5 @@
 #include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
 #include <iostream>
 #include "PlayingState.h"
 #include "Playingstate2.h"
@@ -53,8 +54,8 @@ int main()
     // Create permanent F1 settings hint text
     Text settingsHint(font, "F1 - Settings", 24);
     settingsHint.setFillColor(Color::White);
-	settingsHint.setOutlineColor(Color::Black);
-	settingsHint.setOutlineThickness(5.f);
+    settingsHint.setOutlineColor(Color::Black);
+    settingsHint.setOutlineThickness(5.f);
     auto hintBounds = settingsHint.getLocalBounds();
     settingsHint.setOrigin(Vector2f(hintBounds.size.x, 0)); // Right-aligned
     settingsHint.setPosition(Vector2f(window.getSize().x - 20.f, 20.f)); // Top-right corner with 20px padding
@@ -65,6 +66,10 @@ int main()
 
     // Track key press states to handle single key events.
     bool wPressed = false, sPressed = false, enterPressed = false;
+
+    // MOVE MUSIC VARIABLES OUTSIDE THE LOOP
+    Music music;
+    std::string currentSong;
 
     // Main application loop.
     while (window.isOpen())
@@ -141,6 +146,35 @@ int main()
             }
         }
 
+        // Handle music changes based on game state
+        std::string desiredSong;
+
+        if (state == MENU) {
+            desiredSong = "PiecebyPiece.mp3";
+        } else if (state == PLAYING) {
+            desiredSong = "PiecebyPiece2.mp3";
+        } else if (state == PLAYING2) {
+            desiredSong = "PiecebyPiece2.mp3";
+        } else if (state == PLAYING3) {
+            desiredSong = "PiecebyPiece2.mp3";
+        } else {
+            desiredSong = "PiecebyPiece.mp3"; // fallback or silence
+        }
+
+        if (desiredSong != currentSong) {
+            if (music.getStatus() == Music::Status::Playing)
+                music.stop();
+            if (music.openFromFile(desiredSong)) {
+                music.setLooping(true);
+                music.setVolume(40.f); // or your preferred volume
+                music.play();
+                currentSong = desiredSong;
+            } else {
+                std::cerr << "Failed to load " << desiredSong << std::endl;
+                currentSong.clear();
+            }
+        }
+
         window.clear(); // Clear the window for new frame.
 
         // Render the current state.
@@ -176,7 +210,7 @@ int main()
         }
         else if (state == PLAYING3) {
             handlePlayingState3(window, running, state);
-		}
+        }
         else if (state == SETTINGS) {
             // Delegate to the settings state handler.
             handleSettingsState(window, running, state);

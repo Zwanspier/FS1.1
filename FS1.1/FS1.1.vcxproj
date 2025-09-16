@@ -143,7 +143,7 @@
     <ClInclude Include="GameState.h" />
     <ClInclude Include="Maze.h" />
     <ClInclude Include="PlayingState.h" />
-    <ClInclude Include="Playingstate2.h" />
+    <ClInclude Include="PlayingState2.h" />
     <ClInclude Include="PlayingState3.h" />
     <ClInclude Include="PreLevelState.h" />
     <ClInclude Include="SettingsState.h" />

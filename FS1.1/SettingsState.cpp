@@ -9,7 +9,8 @@ int framerateOptions[] = { 30, 60, 120, 144, 240 };
 bool vsyncEnabled = true;
 float gamma = 0.0f; // Start with black walls (invisible)
 int resolutionIndex = 2;
-std::vector<sf::Vector2u> resolutionOptions = {
+float musicVolume = 40.0f; // Default music volume (0-100)
+vector<Vector2u> resolutionOptions = {
     {1280, 720},
     {1600, 900},
     {1920, 1080},
@@ -26,26 +27,27 @@ void applySettings(RenderWindow& window) {
 
     // Check if maze size (resolution) setting changed
     bool mazeSizeChanged = (resolutionIndex != lastResolutionIndex);
-    
+
     if (mazeSizeChanged) {
         // Only trigger maze regeneration, don't change window
         mazeNeedsRegeneration = true;
         lastResolutionIndex = resolutionIndex;
     }
-    
+
     // Apply VSync setting (only if changed)
     if (vsyncEnabled != lastVsyncEnabled) {
         window.setVerticalSyncEnabled(vsyncEnabled);
         lastVsyncEnabled = vsyncEnabled;
     }
-    
+
     // Note: We don't apply framerate limit to the window anymore
     // since it's only used for text speed calculation
-    
+    // Note: Music volume is applied directly in main loop when music changes
+
     settingsChanged = true;
 }
 
-// Handles the settings menu, including VSync, framerate, and fake gamma.
+// Handles the settings menu, including VSync, framerate, gamma, and music volume.
 void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
 {
     static int selected = 0;
@@ -55,8 +57,8 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
 
     extern GameState previousState;
 
-    // Menu options: VSync, Framerate, Gamma, Maze Size, Apply Changes, Back
-    const vector<string> options = { "VSync: ", "Text Speed: ", "Wall Visibility: ", "Maze Size: ", "Apply Changes", "Back" };
+    // Menu options: VSync, Framerate, Gamma, Maze Size, Music Volume, Apply Changes, Back
+    const vector<string> options = { "VSync: ", "Text Speed: ", "Wall Visibility: ", "Maze Size: ", "Music Volume: ", "Apply Changes", "Back" };
 
     static Font font;
     static bool fontLoaded = false;
@@ -91,8 +93,13 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
             // Display maze size instead of actual resolution
             text.setString(options[i] + to_string(resolutionOptions[resolutionIndex].x) + "x" + to_string(resolutionOptions[resolutionIndex].y));
         }
-        // Options 4 (Apply Changes) and 5 (Back) use their default text
-        
+        else if (i == 4) {
+            // Display music volume as percentage
+            int volumePercent = static_cast<int>(musicVolume);
+            text.setString(options[i] + to_string(volumePercent) + "%");
+        }
+        // Options 5 (Apply Changes) and 6 (Back) use their default text
+
         textObjects.push_back(text);
         window.draw(text);
     }
@@ -130,10 +137,15 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
             if (resolutionIndex >= static_cast<int>(size(resolutionOptions))) resolutionIndex = 0;
         }
         else if (selected == 4) {
+            // Increase music volume by 10%
+            musicVolume += 10.0f;
+            if (musicVolume > 100.0f) musicVolume = 100.0f;
+        }
+        else if (selected == 5) {
             // Apply all settings changes
             applySettings(window);
         }
-        else if (selected == 5) {
+        else if (selected == 6) {
             state = previousState;
         }
     }
@@ -154,6 +166,11 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
         else if (selected == 3) {
             resolutionIndex--;
             if (resolutionIndex < 0) resolutionIndex = static_cast<int>(size(resolutionOptions)) - 1;
+        }
+        else if (selected == 4) {
+            // Decrease music volume by 10%
+            musicVolume -= 10.0f;
+            if (musicVolume < 0.0f) musicVolume = 0.0f;
         }
     }
     else if (!isMouseRightButtonPressed) {
@@ -190,6 +207,11 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
                 resolutionIndex--;
                 if (resolutionIndex < 0) resolutionIndex = static_cast<int>(size(resolutionOptions)) - 1;
             }
+            else if (selected == 4) {
+                // Decrease music volume by 10%
+                musicVolume -= 10.0f;
+                if (musicVolume < 0.0f) musicVolume = 0.0f;
+            }
             leftPressed = true;
         }
     }
@@ -206,6 +228,11 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
                 resolutionIndex++;
                 if (resolutionIndex >= static_cast<int>(size(resolutionOptions))) resolutionIndex = 0;
             }
+            else if (selected == 4) {
+                // Increase music volume by 10%
+                musicVolume += 10.0f;
+                if (musicVolume > 100.0f) musicVolume = 100.0f;
+            }
             rightPressed = true;
         }
     }
@@ -216,16 +243,17 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
             if (selected == 0) {
                 vsyncEnabled = !vsyncEnabled;
             }
-            else if (selected == 4) {
+            else if (selected == 5) {
                 // Apply all settings changes
                 applySettings(window);
             }
-            else if (selected == 5) {
+            else if (selected == 6) {
                 state = previousState;
             }
             enterPressed = true;
         }
-    } else enterPressed = false;
+    }
+    else enterPressed = false;
 
     if (Keyboard::isKeyPressed(Keyboard::Key::Escape)) {
         state = previousState;

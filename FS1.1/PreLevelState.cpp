@@ -6,7 +6,7 @@ void handlePreLevelState(RenderWindow& window, bool& running, GameState& current
     static bool fontLoaded = false;
     static bool enterPressed = false;
     static bool initialFrame = true; // Add this to track the first frame
-    
+
     if (!fontLoaded) {
         font.openFromFile("arial.ttf");
         fontLoaded = true;
@@ -23,39 +23,41 @@ void handlePreLevelState(RenderWindow& window, bool& running, GameState& current
     // Determine level title and controls based on the next level
     string levelTitle;
     vector<string> controlInstructions;
-    
+
     switch (nextLevel) {
-        case PLAYING:
-            levelTitle = "Level 1: Scrolling Text";
-            controlInstructions = {
-                "Controls:",
-                "M - Return to Menu",
-                "F1 - Open Settings"
-            };
-            break;
-        case PLAYING2:
-            levelTitle = "Level 2: Maze Challenge";
-            controlInstructions = {
-                "Controls:",
-                "W/A/S/D or Arrow Keys - Move",
-                "Enter - Next level (when at exit)",
-                "M - Return to Menu",
-                "F1 - Open Settings"
-            };
-            break;
-        case PLAYING3:
-            levelTitle = "Level 3: Mystery Level";
-            controlInstructions = {
-                "Controls:",
-                "H - Special action",
-                "M - Return to Menu",
-                "F1 - Open Settings"
-            };
-            break;
-        default:
-            levelTitle = "Unknown Level";
-            controlInstructions = { "Press ENTER to continue" };
-            break;
+    case PLAYING:
+        levelTitle = "Level 1: Fast Lines";
+        controlInstructions = {
+            "Controls:",
+            "M - Return to Menu",
+            "F1 - Open Settings"
+        };
+        break;
+    case PLAYING2:
+        levelTitle = "Level 2: Dark Maze";
+        controlInstructions = {
+            "Controls:",
+            "W/A/S/D - Move",
+            "Enter - Next level (when at exit)",
+            "M - Return to Menu",
+            "F1 - Open Settings"
+        };
+        break;
+    case PLAYING3:
+        levelTitle = "Level 3: A Silent Drive";
+        controlInstructions = {
+            "Controls:",
+            "A/D - Steer",
+            "W/S - Speed up/slow down",
+            "R - Restart (when game over)",
+            "M - Return to Menu",
+            "F1 - Open Settings"
+        };
+        break;
+    default:
+        levelTitle = "Unknown Level";
+        controlInstructions = { "Press ENTER to continue" };
+        break;
     }
 
     // Draw level title
@@ -72,7 +74,7 @@ void handlePreLevelState(RenderWindow& window, bool& running, GameState& current
         Text controlText(font, controlInstructions[i], 36);
         controlText.setFillColor(i == 0 ? Color::Yellow : Color::White);
         if (i == 0) controlText.setStyle(Text::Bold);
-        
+
         auto bounds = controlText.getLocalBounds();
         controlText.setOrigin(Vector2f(bounds.size.x / 2.f, 0));
         controlText.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 2.f + i * 45.f));
@@ -97,7 +99,8 @@ void handlePreLevelState(RenderWindow& window, bool& running, GameState& current
             enterPressed = true;
             initialFrame = true; // Reset for next time this state is entered
         }
-    } else {
+    }
+    else {
         enterPressed = false;
     }
 

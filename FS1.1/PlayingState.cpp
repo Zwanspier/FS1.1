@@ -6,11 +6,11 @@
 #include <string>
 
 // Helper to get a string for a Keyboard::Key
-std::string keyToString(sf::Keyboard::Key key) {
+string keyToString(Keyboard::Key key) {
     // Convert enum to underlying integer, then to char
     int keyValue = static_cast<int>(key);
-    int aValue = static_cast<int>(sf::Keyboard::Key::A);
-    return std::string(1, static_cast<char>('A' + (keyValue - aValue)));
+    int aValue = static_cast<int>(Keyboard::Key::A);
+    return string(1, static_cast<char>('A' + (keyValue - aValue)));
 }
 
 void handlePlayingState(RenderWindow& window, bool& running, GameState& state)
@@ -27,33 +27,33 @@ void handlePlayingState(RenderWindow& window, bool& running, GameState& state)
 
     // --- Random key logic ---
     static bool keyChosen = false;
-    static sf::Keyboard::Key randomKey = sf::Keyboard::Key::Unknown;
+    static Keyboard::Key randomKey = Keyboard::Key::Unknown;
     static bool keyPressed = false;
 
     // List of keys to avoid (already in use)
-    static std::set<sf::Keyboard::Key> reservedKeys = {
-        sf::Keyboard::Key::M, sf::Keyboard::Key::F1, sf::Keyboard::Key::Escape
+    static set<Keyboard::Key> reservedKeys = {
+        Keyboard::Key::M, Keyboard::Key::F1, Keyboard::Key::Escape
         // Add any other keys you use for menu/settings/etc.
     };
 
     // List of candidate keys (A-Z, except reserved)
-    static std::vector<sf::Keyboard::Key> candidateKeys;
+    static vector<Keyboard::Key> candidateKeys;
     if (candidateKeys.empty()) {
         // Use underlying integer values for comparison
-        int aValue = static_cast<int>(sf::Keyboard::Key::A);
-        int zValue = static_cast<int>(sf::Keyboard::Key::Z);
-        
+        int aValue = static_cast<int>(Keyboard::Key::A);
+        int zValue = static_cast<int>(Keyboard::Key::Z);
+
         for (int k = aValue; k <= zValue; ++k) {
-            sf::Keyboard::Key currentKey = static_cast<sf::Keyboard::Key>(k);
+            Keyboard::Key currentKey = static_cast<Keyboard::Key>(k);
             if (reservedKeys.count(currentKey) == 0)
                 candidateKeys.push_back(currentKey);
         }
     }
 
     if (!keyChosen) {
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<> dis(0, static_cast<int>(candidateKeys.size()) - 1);
+        random_device rd;
+        mt19937 gen(rd());
+        uniform_int_distribution<> dis(0, static_cast<int>(candidateKeys.size()) - 1);
         randomKey = candidateKeys[dis(gen)];
         keyChosen = true;
     }
@@ -69,7 +69,7 @@ void handlePlayingState(RenderWindow& window, bool& running, GameState& state)
     }
 
     // Update the scrolling text to use the random key
-    std::string scrollMsg = "NextLevel = ";
+    string scrollMsg = "NextLevel = ";
     scrollMsg += keyToString(randomKey);
     scrollMsg += " ";
     scrollingText.setString(scrollMsg);
@@ -115,13 +115,14 @@ void handlePlayingState(RenderWindow& window, bool& running, GameState& state)
     // window.display();
 
     // Handle state transitions.
-    if (sf::Keyboard::isKeyPressed(randomKey)) {
+    if (Keyboard::isKeyPressed(randomKey)) {
         if (!keyPressed) {
             state = PRELEVEL2; // Go to pre-level screen before level 2
             keyChosen = false; // So a new key is chosen next time
             keyPressed = true;
         }
-    } else {
+    }
+    else {
         keyPressed = false;
     }
     if (Keyboard::isKeyPressed(Keyboard::Key::M)) {
@@ -129,7 +130,7 @@ void handlePlayingState(RenderWindow& window, bool& running, GameState& state)
         keyChosen = false;
     }
     if (Keyboard::isKeyPressed(Keyboard::Key::F1)) {
-        previousState = state;    
+        previousState = state;
         state = SETTINGS;
         keyChosen = false;
     }
