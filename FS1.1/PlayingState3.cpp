@@ -1,121 +1,229 @@
 #include "PlayingState3.h"
-#include <random>
-#include <vector>
-#include <algorithm>
 
-// Racing game components
+//=== DATA STRUCTURES ===
+// These structs define the blueprint for game objects
+
+// Represents a player's car with position, movement, and visual components
 struct Car {
-    Vector2f position;
-    Vector2f velocity;
-    float speed = 300.0f; // pixels per second
-    float maxSpeed = 500.0f;
-    RectangleShape shape;
+    Vector2f position;        // Current X,Y coordinates on screen
+    Vector2f velocity;        // Movement speed and direction per frame
+    float speed = 300.0f;     // Standard movement speed in pixels/second
+    float maxSpeed = 500.0f;  // Maximum possible speed
+    optional<Sprite> sprite;  // Optional sprite for car image (may be null)
+    RectangleShape shape;     // Fallback rectangle if no sprite loaded
+    int spriteIndex = 0;      // Index into sprite sheet for car appearance
     
-    Car() {
-        shape.setSize(Vector2f(30, 50));
-        shape.setFillColor(Color::Red);
-        shape.setOrigin(Vector2f(15, 25)); // Center the car
+    // Constructor initializes default values
+    Car() : shape({30, 50}) {
+        velocity = Vector2f(0, 0);           // Start stationary
+        shape.setSize(Vector2f(30, 50));     // Set rectangle dimensions
+        shape.setFillColor(Color::Red);      // Default color
+        shape.setOrigin(Vector2f(15, 25));   // Center origin for rotation
     }
 };
 
+// Represents AI-controlled obstacle cars with sound effects
 struct Obstacle {
-    Vector2f position;
-    Vector2f velocity;
-    RectangleShape shape;
-    bool active = true;
+    Vector2f position;        // Screen coordinates
+    Vector2f velocity;        // Movement vector
+    optional<Sprite> sprite;  // Car image (optional)
+    RectangleShape shape;     // Fallback rectangle shape
+    bool active = true;       // Whether obstacle is still in play
+    int spriteIndex = 0;      // Which car sprite to use from sheet
     
-    Obstacle(float x, float y) : position(x, y) {
-        shape.setSize(Vector2f(40, 40));
-        shape.setFillColor(Color::Yellow);
-        shape.setOrigin(Vector2f(20, 20));
-        velocity.y = 200.0f; // Move downward
+    // Audio system - each obstacle has independent sound
+    Sound* engineSound = nullptr;              // SFML Sound object pointer
+    SoundBuffer* personalSoundBuffer = nullptr; // Each obstacle owns sound data
+    bool soundInitialized = false;             // Has audio been set up?
+    float soundVolume = 0.0f;                 // Current volume level
+    
+    // Constructor: creates obstacle at specified coordinates
+    Obstacle(float x, float y) : position(x, y), shape({40, 40}) {
+        velocity.y = 200.0f;                    // Always moves downward
+        spriteIndex = rand() % 5;               // Random car type (0-4)
+        shape.setSize(Vector2f(40, 40));        // Square shape
+        shape.setFillColor(Color::Yellow);      // Yellow color
+        shape.setOrigin(Vector2f(20, 20));      // Center origin
+    }
+    
+    // Destructor: cleanup audio resources to prevent memory leaks
+    ~Obstacle() {
+        if (engineSound) {
+            if (engineSound->getStatus() == Sound::Status::Playing) {
+                engineSound->stop();  // Stop audio before deletion
+            }
+            delete engineSound;       // Free memory
+        }
+        if (personalSoundBuffer) {
+            delete personalSoundBuffer;  // Free sound data memory
+        }
+    }
+    
+    // Copy constructor: creates new obstacle from existing (audio not copied)
+    Obstacle(const Obstacle& other) : position(other.position), velocity(other.velocity), 
+                                     shape(other.shape), active(other.active),
+                                     soundInitialized(false), soundVolume(0.0f), 
+                                     engineSound(nullptr), personalSoundBuffer(nullptr) {
+        spriteIndex = other.spriteIndex;  // Copy sprite selection
+        // Note: Each obstacle needs its own audio objects for proper mixing
+    }
+    
+    // Assignment operator: copies data from another obstacle
+    Obstacle& operator=(const Obstacle& other) {
+        if (this != &other) {  // Prevent self-assignment
+            position = other.position;
+            velocity = other.velocity;
+            shape = other.shape;
+            active = other.active;
+            spriteIndex = other.spriteIndex;
+            sprite = other.sprite;
+            // Audio objects are not copied - each obstacle maintains its own
+        }
+        return *this;
     }
 };
 
+// Represents a segment of the racing track
 struct TrackSegment {
-    Vector2f position;
-    float width;
-    Color color;
-    RectangleShape leftWall, rightWall, road;
+    Vector2f position;    // Center position of this track piece
+    float width;         // Track width in pixels
+    Color color;         // Track color
+    RectangleShape leftWall, rightWall, road;  // Visual components
     
-    TrackSegment(float y, float trackWidth, float screenWidth) : width(trackWidth) {
-        position.x = screenWidth / 2.0f;
-        position.y = y;
-        color = Color(102, 102, 102, 255);
+    // Constructor: creates track segment at specified Y position
+    TrackSegment(float y, float trackWidth, float screenWidth) : width(trackWidth), 
+        leftWall({10, 20}), rightWall({10, 20}), road({trackWidth, 20}) {
+        position.x = screenWidth / 2.0f;  // Center horizontally
+        position.y = y;                   // Set vertical position
+        color = Color(102, 102, 102, 255); // Gray color
         
-        // Create road
+        // Configure road surface
         road.setSize(Vector2f(trackWidth, 20));
         road.setFillColor(Color(102, 102, 102, 255));
         road.setPosition(Vector2f(position.x - trackWidth/2, y));
         
-        // Create walls
+        // Configure left barrier
         leftWall.setSize(Vector2f(10, 20));
         leftWall.setFillColor(Color::White);
         leftWall.setPosition(Vector2f(position.x - trackWidth/2 - 10, y));
         
+        // Configure right barrier
         rightWall.setSize(Vector2f(10, 20));
         rightWall.setFillColor(Color::White);
         rightWall.setPosition(Vector2f(position.x + trackWidth/2, y));
     }
 };
 
-// Helper function for collision detection
+//=== UTILITY FUNCTIONS ===
+
+// AABB (Axis-Aligned Bounding Box) collision detection for rectangles
 bool checkCollision(const RectangleShape& rect1, const RectangleShape& rect2) {
-    FloatRect bounds1 = rect1.getGlobalBounds();
-    FloatRect bounds2 = rect2.getGlobalBounds();
+    FloatRect bounds1 = rect1.getGlobalBounds();  // Get rectangle 1's screen bounds
+    FloatRect bounds2 = rect2.getGlobalBounds();  // Get rectangle 2's screen bounds
     
+    // Check for overlap in both X and Y axes
     return (bounds1.position.x < bounds2.position.x + bounds2.size.x &&
             bounds1.position.x + bounds1.size.x > bounds2.position.x &&
             bounds1.position.y < bounds2.position.y + bounds2.size.y &&
             bounds1.position.y + bounds1.size.y > bounds2.position.y);
 }
 
-// Helper function to check if a position overlaps with existing obstacles
-bool isPositionValid(float x, float y, const vector<Obstacle>& obstacles, float minDistance = 80.0f) { // Increased from 60.0f
+// Collision detection for sprite objects (same algorithm, different types)
+bool checkSpriteCollision(const Sprite& sprite1, const Sprite& sprite2) {
+    FloatRect bounds1 = sprite1.getGlobalBounds();
+    FloatRect bounds2 = sprite2.getGlobalBounds();
+    
+    auto intersection = bounds1.findIntersection(bounds2);
+    return intersection.has_value();  // Returns true if intersection exists
+}
+
+// Validates obstacle placement to prevent clustering
+bool isPositionValid(float x, float y, const vector<Obstacle>& obstacles, float minDistance = 80.0f) {
+    // Check distance to all existing obstacles
     for (const auto& obstacle : obstacles) {
-        float dx = x - obstacle.position.x;
-        float dy = y - obstacle.position.y;
-        float distance = sqrt(dx * dx + dy * dy);
+        float dx = x - obstacle.position.x;  // X-axis distance
+        float dy = y - obstacle.position.y;  // Y-axis distance
+        float distance = sqrt(dx * dx + dy * dy);  // Euclidean distance
         
         if (distance < minDistance) {
             return false; // Too close to existing obstacle
         }
     }
-    return true; // Position is valid
+    return true; // Position is acceptable
 }
 
+// Calculates Euclidean distance between two 2D points
+float calculateDistance(const Vector2f& pos1, const Vector2f& pos2) {
+    float dx = pos1.x - pos2.x;  // Delta X
+    float dy = pos1.y - pos2.y;  // Delta Y
+    return sqrt(dx * dx + dy * dy);  // Pythagorean theorem
+}
+
+//=== MAIN GAME LOOP FUNCTION ===
+// Handles all logic and rendering for PlayingState3
 void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
 {
-    // Access music volume from settings
+    // External reference to global music volume setting
     extern float musicVolume;
     
-    // Static variables for persistent state (these persist across game restarts)
+    //=== PERSISTENT STATE VARIABLES ===
+    // Static variables maintain state between function calls
+    
+    // Font loading
     static Font font;
     static bool fontLoaded = false;
     
-    // Music-related timers that should persist across game restarts
-    static Clock musicOffTimer; // Timer for tracking music off time
-    static bool musicWasOff = false; // Track previous music state
-    static Clock textDisplayTimer; // Timer for text sequence
-    static bool textSequenceStarted = false;
-    static int currentTextIndex = -1; // -1 means no text shown yet
-    static bool textSequenceCompleted = false;
-    static bool levelTimersInitialized = false; // Track if we've initialized the level-persistent timers
+    // Background system
+    static Texture backgroundTexture;      // Image data
+    static Sprite* backgroundSprite = nullptr;  // Display object (pointer for lazy initialization)
+    static bool backgroundLoaded = false;       // Loading status flag
+    static float backgroundOffset1 = 0.0f;      // Primary scrolling offset
+    static float backgroundOffset2 = 0.0f;      // Secondary offset for seamless loop
     
-    // Help system variables
-    static bool helpRequested = false;
-    static bool playerOutOfCar = false;
-    static bool hKeyPressed = false;
+    // Sprite sheet system for car graphics
+    static Texture carSpriteSheet;           // Contains all car images
+    static bool carSpriteSheetLoaded = false; // Loading status
+    static vector<IntRect> carSpriteRects;   // Defines sub-rectangles for each car
+    static const int SPRITE_WIDTH = 32;      // Individual sprite dimensions
+    static const int SPRITE_HEIGHT = 64;
+    static const int SPRITES_PER_ROW = 5;    // Layout of sprite sheet
+    static const int TOTAL_CAR_SPRITES = 5;
+    
+    // Audio system
+    static Music engineMusic;                    // Background engine sound
+    static bool engineMusicLoaded = false;
+    static float lastGameSpeed = 200.0f;         // Previous frame's speed for audio adjustments
+    
+    // Obstacle audio template
+    static SoundBuffer masterObstacleEngineBuffer;     // Template sound data
+    static bool masterObstacleEngineBufferLoaded = false;
+    static const float MAX_OBSTACLE_SOUND_DISTANCE = 800.0f; // Maximum audible range
+    static const float MIN_OBSTACLE_SOUND_DISTANCE = 100.0f; // Distance for full volume
+    
+    // Special narrative system (triggers after 60 seconds of silence)
+    static Clock musicOffTimer;            // Tracks duration of music being off
+    static bool musicWasOff = false;       // Previous frame's music state
+    static Clock textDisplayTimer;         // Controls text sequence timing
+    static bool textSequenceStarted = false;
+    static int currentTextIndex = -1;      // Index of currently displayed message
+    static bool textSequenceCompleted = false;
+    static bool levelTimersInitialized = false; // Prevents re-initialization
+    
+    // User interaction system
+    static bool helpRequested = false;     // Player requested help display
+    static bool playerOutOfCar = false;    // Player exited vehicle
+    static bool hKeyPressed = false;       // Input state tracking (prevents key repeat)
     static bool fKeyPressed = false;
     
-    // Car object to show when player exits
-    static RectangleShape carShape;
-    static Vector2f carPosition;
+    // Abandoned car visualization (when player exits)
+    static RectangleShape carShape({30, 50});        // Simple rectangle fallback
+    static std::optional<Sprite> abandonedCarSprite; // Sprite copy for abandoned car
+    static Vector2f carPosition;                     // Where car was left
     static bool carShapeInitialized = false;
     
-    // Text messages to display
+    // Narrative text content
     static const vector<string> secretTexts = {
-        "Can you hear that.",
+        "That's better.",
         "That moment where everything goes quiet.",
         "Isn't it soothing.",
         "All the noise washed away.",
@@ -132,53 +240,153 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
         "I'll be here if you need me."
     };
     
-    // Game-specific variables (these reset with game restarts)
-    static Clock clock;
-    static Clock gameTimer;
-    static Car player;
-    static vector<TrackSegment> track;
-    static vector<Obstacle> obstacles;
-    static bool gameInitialized = false;
+    //=== GAME STATE VARIABLES ===
+    // These reset when game restarts
+    static Clock clock;                    // Frame timing
+    static Clock gameTimer;               // Total session time
+    static Car player;                    // Player's car object
+    static vector<TrackSegment> track;    // Collection of track pieces
+    static vector<Obstacle> obstacles;    // Active obstacle cars
+    static bool gameInitialized = false;  // Initialization flag
 
-    // Obstacle spawning variables (these should reset with game restarts)
-    static float lastObstacleDistance = 0.0f;
-    static float nextObstacleDistance = 300.0f;
+    // Obstacle generation system
+    static float lastObstacleDistance = 0.0f;  // Distance when last obstacle was created
+    static float nextObstacleDistance = 300.0f; // Distance threshold for next obstacle
 
-    // Game state
-    static float gameSpeed = 200.0f; // Base speed of the world moving toward player
-    static float trackWidth = 400.0f; // Increased from 200.0f to 400.0f (doubled width)
-    static int score = 0;
-    static bool gameOver = false;
-    static float totalDistance = 0.0f; // Track total distance traveled
+    // Core game metrics
+    static float gameSpeed = 200.0f;       // Current scrolling speed
+    static float trackWidth = 400.0f;      // Race track width
+    static int score = 0;                  // Player score (based on distance)
+    static bool gameOver = false;          // Game state flag
+    static float totalDistance = 0.0f;     // Cumulative distance traveled
     
-    // Random number generation
+    // Random number generation system
     static random_device rd;
     static mt19937 gen(rd());
     
-    // Initialize level-persistent timers only once per level entry
+    //=== ONE-TIME LEVEL INITIALIZATION ===
+    // Execute only once when entering this game state
     if (!levelTimersInitialized) {
-        musicOffTimer.restart();
-        textDisplayTimer.restart();
-        musicWasOff = (musicVolume <= 0.0f);
+        musicOffTimer.restart();                    // Begin tracking music state
+        textDisplayTimer.restart();                // Initialize text timing
+        musicWasOff = (musicVolume <= 0.0f);       // Record initial music state
         textSequenceStarted = false;
         currentTextIndex = -1;
         textSequenceCompleted = false;
         helpRequested = false;
         playerOutOfCar = false;
-        levelTimersInitialized = true;
+        levelTimersInitialized = true;             // Prevent re-execution
     }
     
-    // Initialize game on first run or restart
+    //=== ASSET LOADING ===
+    // Car sprite sheet loading and processing
+    if (!carSpriteSheetLoaded) {
+        if (carSpriteSheet.loadFromFile("Images/Cars.png")) {
+            carSpriteSheetLoaded = true;
+            
+            // Parse sprite sheet into individual car rectangles
+            carSpriteRects.clear();
+            
+            // Calculate dimensions of each sprite
+            Vector2u textureSize = carSpriteSheet.getSize();
+            int actualSpriteWidth = textureSize.x / SPRITES_PER_ROW;
+            int actualSpriteHeight = textureSize.y;
+            
+            cout << "Texture size: " << textureSize.x << "x" << textureSize.y << endl;
+            cout << "Calculated sprite size: " << actualSpriteWidth << "x" << actualSpriteHeight << endl;
+            
+            // Create rectangle definitions for each car sprite
+            for (int i = 0; i < TOTAL_CAR_SPRITES; ++i) {
+                int col = i; // Column in sprite sheet (horizontal layout)
+                
+                // Define rectangle bounds for this sprite
+                IntRect rect({col * actualSpriteWidth, 0}, {actualSpriteWidth, actualSpriteHeight});
+                carSpriteRects.push_back(rect);
+                
+                cout << "Car " << i << " rect: (" << rect.position.x << ", " << rect.position.y 
+                     << ", " << rect.size.x << ", " << rect.size.y << ")" << endl;
+            }
+        } else {
+            cerr << "Failed to load Images/Cars.png" << endl;
+            carSpriteSheetLoaded = false;
+        }
+    }
+    
+    // Background texture loading with scaling
+    if (!backgroundLoaded) {
+        if (backgroundTexture.loadFromFile("Images/grass.png")) {
+            // Create sprite object from loaded texture
+            backgroundSprite = new Sprite(backgroundTexture);
+            
+            // Calculate scaling to fit window
+            Vector2u windowSize = window.getSize();
+            Vector2u textureSize = backgroundTexture.getSize();
+            
+            float scaleX = static_cast<float>(windowSize.x) / textureSize.x;
+            float scaleY = static_cast<float>(windowSize.y) / textureSize.y;
+            
+            backgroundSprite->setScale(Vector2f(scaleX, scaleY));
+            backgroundLoaded = true;
+        } 
+        else {
+            cerr << "Failed to load grass.png" << endl;
+        }
+    }
+    
+    // Engine music initialization
+    if (!engineMusicLoaded) {
+        if (engineMusic.openFromFile("Sounds/Engine4.ogg")) {
+            engineMusic.setLooping(true);      // Enable continuous loop
+            engineMusic.setVolume(30.0f);      // Set initial volume
+            engineMusicLoaded = true;
+        } else {
+            cerr << "Failed to load Engine4.ogg" << endl;
+            engineMusicLoaded = false;
+        }
+    }
+        
+    // Obstacle sound template loading
+    if (!masterObstacleEngineBufferLoaded) {
+        if (masterObstacleEngineBuffer.loadFromFile("Sounds/Engine1.2.ogg")) {
+            masterObstacleEngineBufferLoaded = true;
+        } else {
+            cerr << "Failed to load Engine1.2.ogg for obstacles" << endl;
+            masterObstacleEngineBufferLoaded = false;
+        }
+    }
+    
+    //=== GAME INITIALIZATION ===
+    // Set up game objects and initial state
     if (!gameInitialized) {
+        // Load text font
         if (!fontLoaded) {
-            font.openFromFile("arial.ttf");
+            if (!font.openFromFile("arial.ttf")) {
+                cerr << "Failed to load arial.ttf" << endl;
+            }
             fontLoaded = true;
         }
         
-        // Initialize player car
-        player.position = Vector2f(window.getSize().x / 2.0f, window.getSize().y * 0.8f);
+        // Configure player car sprite
+        if (carSpriteSheetLoaded && !carSpriteRects.empty()) {
+            player.sprite = Sprite(carSpriteSheet);
+            player.spriteIndex = 0;                          // Use first car design
+            player.sprite->setTextureRect(carSpriteRects[player.spriteIndex]);
+            
+            // Calculate appropriate scaling
+            Vector2u textureSize = carSpriteSheet.getSize();
+            int actualSpriteWidth = textureSize.x / SPRITES_PER_ROW;
+            
+            float scale = 30.0f / actualSpriteWidth;         // Target width of 30 pixels
+            player.sprite->setScale(Vector2f(scale, scale));
+            player.sprite->setOrigin(Vector2f(actualSpriteWidth / 2.0f, textureSize.y / 2.0f));
+            
+            cout << "Player sprite initialized with scale: " << scale << endl;
+        }
         
-        // Initialize separate car shape for when player exits
+        // Position player at bottom-center of screen
+        player.position = Vector2f(static_cast<float>(window.getSize().x) / 2.0f, static_cast<float>(window.getSize().y) * 0.8f);
+        
+        // Initialize fallback car shape
         if (!carShapeInitialized) {
             carShape.setSize(Vector2f(30, 50));
             carShape.setFillColor(Color::Red);
@@ -186,74 +394,129 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
             carShapeInitialized = true;
         }
         
-        // Generate initial track segments
+        // Generate initial track segments extending upward
         for (int i = 0; i < 50; ++i) {
-            track.emplace_back(-i * 20.0f, trackWidth, window.getSize().x);
+            track.emplace_back(-i * 20.0f, trackWidth, static_cast<float>(window.getSize().x));
         }
         
-        // Reset obstacle spawning variables
+        // Reset obstacle generation parameters
         lastObstacleDistance = 0.0f;
         nextObstacleDistance = 300.0f;
         
+        // Initialize timing systems
         clock.restart();
         gameTimer.restart();
-        totalDistance = 0.0f; // Reset distance
+        totalDistance = 0.0f;
+        
+        // Start background audio
+        if (engineMusicLoaded && !playerOutOfCar) {
+            engineMusic.play();
+        }
+        
         gameInitialized = true;
     }
 
+    //=== FRAME TIMING ===
+    // Calculate time elapsed since last frame for smooth animation
     float deltaTime = clock.restart().asSeconds();
     
-    // Check music state and update timer
+    //=== BACKGROUND ANIMATION ===
+    // Implement parallax scrolling effect
+    if (backgroundLoaded && backgroundSprite && !gameOver && !playerOutOfCar) {
+        float backgroundScrollSpeed = gameSpeed * 0.3f;  // Slower than foreground for depth
+        backgroundOffset1 += backgroundScrollSpeed * deltaTime;
+        backgroundOffset2 += backgroundScrollSpeed * deltaTime;
+        
+        // Handle wrap-around for infinite scrolling
+        Vector2u textureSize = backgroundTexture.getSize();
+        Vector2f scale = backgroundSprite->getScale();
+        float scaledHeight = textureSize.y * scale.y;
+        
+        if (backgroundOffset1 >= scaledHeight) {
+            backgroundOffset1 -= scaledHeight;  // Reset to create seamless loop
+        }
+        if (backgroundOffset2 >= scaledHeight) {
+            backgroundOffset2 -= scaledHeight;
+        }
+    }
+    
+    //=== DYNAMIC AUDIO SYSTEM ===
+    // Adjust engine sound based on vehicle speed
+    if (engineMusicLoaded) {
+        if (!playerOutOfCar && !gameOver) {
+            // Normalize speed to 0-1 range for audio calculations
+            float speedRatio = (gameSpeed - 50.0f) / (1000.0f - 50.0f);
+            speedRatio = max(0.0f, min(1.0f, speedRatio));  // Clamp to valid range
+            
+            // Higher speed increases pitch (realistic engine behavior)
+            float pitch = 0.8f + (speedRatio * 0.6f);       // Range: 0.8 to 1.4
+            engineMusic.setPitch(pitch);
+            
+            // Higher speed increases volume
+            float volume = 20.0f + (speedRatio * 20.0f);    // Range: 20 to 40
+            engineMusic.setVolume(volume);
+            
+            // Ensure music continues playing
+            if (engineMusic.getStatus() != Music::Status::Playing) {
+                engineMusic.play();
+            }
+        } else {
+            // Silence engine when not driving
+            if (engineMusic.getStatus() == Music::Status::Playing) {
+                engineMusic.stop();
+            }
+        }
+    }
+    
+    //=== NARRATIVE TRIGGER SYSTEM ===
+    // Special event when background music is disabled
     bool musicCurrentlyOff = (musicVolume <= 0.0f);
     if (musicCurrentlyOff) {
         if (!musicWasOff) {
-            // Music just turned off, restart timer
-            musicOffTimer.restart();
+            musicOffTimer.restart();  // Begin timing silence period
         }
-        // Music has been off - check if it's been long enough to start text sequence
+        // Trigger narrative after 60 seconds of silence
         if (!textSequenceStarted && musicOffTimer.getElapsedTime().asSeconds() >= 60.0f) {
             textSequenceStarted = true;
             textDisplayTimer.restart();
-            currentTextIndex = 0; // Start with first text
+            currentTextIndex = 0;
         }
     } else {
-        // Music is on, reset everything if it was previously off
+        // Reset narrative if music returns
         if (musicWasOff) {
             textSequenceStarted = false;
             currentTextIndex = -1;
             textSequenceCompleted = false;
         }
     }
-    musicWasOff = musicCurrentlyOff;
+    musicWasOff = musicCurrentlyOff;  // Store state for next frame
     
-    // Update text sequence timing with 1-second gaps
+    //=== TEXT SEQUENCE CONTROLLER ===
+    // Manages timing of narrative messages (9 seconds display, 1 second gap)
     if (textSequenceStarted && !textSequenceCompleted) {
         float textElapsedTime = textDisplayTimer.getElapsedTime().asSeconds();
         
-        // Each text cycle: 9 seconds visible + 1 second gap = 10 seconds total
-        int cycleIndex = static_cast<int>(textElapsedTime / 10.0f);
-        float cycleTime = textElapsedTime - (cycleIndex * 10.0f);
+        int cycleIndex = static_cast<int>(textElapsedTime / 10.0f);  // 10-second cycles
+        float cycleTime = textElapsedTime - (cycleIndex * 10.0f);   // Position within cycle
         
         if (cycleIndex < static_cast<int>(secretTexts.size())) {
             if (cycleTime < 9.0f) {
-                // Text is visible for first 9 seconds of each 10-second cycle
-                currentTextIndex = cycleIndex;
+                currentTextIndex = cycleIndex;  // Display message
             } else {
-                // 1-second gap (no text shown)
-                currentTextIndex = -1;
+                currentTextIndex = -1;          // Gap period
             }
         } else {
             textSequenceCompleted = true;
-            currentTextIndex = static_cast<int>(secretTexts.size()) - 1; // Keep showing last text
+            currentTextIndex = static_cast<int>(secretTexts.size()) - 1;  // Final message
         }
     }
     
-    // Handle help system input
+    //=== INPUT HANDLING ===
+    // Help system toggle (available after narrative completion)
     if (textSequenceCompleted) {
-        // Handle H key for help
         if (Keyboard::isKeyPressed(Keyboard::Key::H)) {
-            if (!hKeyPressed) {
-                helpRequested = !helpRequested; // Toggle help display
+            if (!hKeyPressed) {  // Edge detection to prevent key repeat
+                helpRequested = !helpRequested;
                 hKeyPressed = true;
             }
         } else {
@@ -261,15 +524,21 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
         }
     }
     
-    // Handle F key to get out of car (works regardless of help menu state)
-    if (textSequenceCompleted && gameSpeed <= 55.0f && !playerOutOfCar) { // Car must be nearly stopped
+    // Vehicle exit system
+    if (textSequenceCompleted && gameSpeed <= 55.0f && !playerOutOfCar) {
         if (Keyboard::isKeyPressed(Keyboard::Key::F)) {
             if (!fKeyPressed) {
                 playerOutOfCar = true;
-                carPosition = player.position; // Save car position
-                // Change player shape to represent a person
-                player.shape.setSize(Vector2f(20, 30)); // Smaller size for person
-                player.shape.setOrigin(Vector2f(10, 15)); // Adjust origin
+                carPosition = player.position;  // Store car location
+                
+                // Preserve car sprite for abandoned vehicle rendering
+                if (carSpriteSheetLoaded && player.sprite.has_value()) {
+                    abandonedCarSprite = player.sprite;
+                }
+                
+                // Reconfigure player as pedestrian
+                player.shape.setSize(Vector2f(20, 30));
+                player.shape.setOrigin(Vector2f(10, 15));
                 fKeyPressed = true;
             }
         } else {
@@ -277,251 +546,421 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
         }
     }
     
-    // Check for end condition - player walks off screen
+    //=== PEDESTRIAN MOVEMENT SYSTEM ===
     if (playerOutOfCar) {
-        // Allow player to move as a person (slower movement with full directional control)
+        // Process movement input (WASD or arrow keys)
         if (Keyboard::isKeyPressed(Keyboard::Key::A) || Keyboard::isKeyPressed(Keyboard::Key::Left)) {
-            player.position.x -= 150.0f * deltaTime; // Slower walking speed
+            player.position.x -= 150.0f * deltaTime;  // Move left
         }
         if (Keyboard::isKeyPressed(Keyboard::Key::D) || Keyboard::isKeyPressed(Keyboard::Key::Right)) {
-            player.position.x += 150.0f * deltaTime; // Slower walking speed
+            player.position.x += 150.0f * deltaTime;  // Move right
         }
         if (Keyboard::isKeyPressed(Keyboard::Key::W) || Keyboard::isKeyPressed(Keyboard::Key::Up)) {
-            player.position.y -= 150.0f * deltaTime; // Move up
+            player.position.y -= 150.0f * deltaTime;  // Move up
         }
         if (Keyboard::isKeyPressed(Keyboard::Key::S) || Keyboard::isKeyPressed(Keyboard::Key::Down)) {
-            player.position.y += 150.0f * deltaTime; // Move down
+            player.position.y += 150.0f * deltaTime;  // Move down
         }
         
-        // Keep player within screen boundaries
-        player.position.x = max(0.0f - 20.0f, min((float)window.getSize().x + 20.0f, player.position.x)); // Allow slight off-screen for exit
-        player.position.y = max(0.0f, min((float)window.getSize().y - 30.0f, player.position.y)); // Keep within vertical bounds
+        // Boundary constraints (allow slight off-screen movement)
+        player.position.x = max(0.0f - 20.0f, min(static_cast<float>(window.getSize().x) + 20.0f, player.position.x));
+        player.position.y = max(0.0f, min(static_cast<float>(window.getSize().y) - 30.0f, player.position.y));
         
-        // Check if player walked off screen (only horizontally for level exit)
-        if (player.position.x < -15 || player.position.x > window.getSize().x + 15) {
-            // End the level - go to end screen or next level
-            state = MENU; // You can change this to a specific end state if you create one
+        // Level exit condition
+        if (player.position.x < -15 || player.position.x > static_cast<float>(window.getSize().x) + 15) {
+            // Cleanup all audio systems
+            if (engineMusicLoaded && engineMusic.getStatus() == Music::Status::Playing) {
+                engineMusic.stop();
+            }
+            
+            for (auto& obstacle : obstacles) {
+                if (obstacle.soundInitialized && obstacle.engineSound && obstacle.engineSound->getStatus() == Sound::Status::Playing) {
+                    obstacle.engineSound->stop();
+                }
+            }
+            
+            // Cleanup graphics resources
+            if (backgroundSprite) {
+                delete backgroundSprite;
+                backgroundSprite = nullptr;
+                backgroundLoaded = false;
+            }
+            
+            // Transition to menu state
+            state = MENU;
             gameInitialized = false;
             levelTimersInitialized = false;
             return;
         }
     }
     
+    //=== DRIVING MECHANICS ===
     if (!gameOver && !playerOutOfCar) {
-        // Handle player input (only when in car)
+        //--- Steering Input ---
         if (Keyboard::isKeyPressed(Keyboard::Key::A) || Keyboard::isKeyPressed(Keyboard::Key::Left)) {
-            player.velocity.x = -player.speed;
+            player.velocity.x = -player.speed;  // Steer left
         }
         else if (Keyboard::isKeyPressed(Keyboard::Key::D) || Keyboard::isKeyPressed(Keyboard::Key::Right)) {
-            player.velocity.x = player.speed;
+            player.velocity.x = player.speed;   // Steer right
         }
         else {
-            player.velocity.x = 0;
+            player.velocity.x = 0;              // No steering input
         }
         
-        // Accelerate/Decelerate
+        //--- Speed Control ---
         if (Keyboard::isKeyPressed(Keyboard::Key::W) || Keyboard::isKeyPressed(Keyboard::Key::Up)) {
-            gameSpeed = min(gameSpeed + 100.0f * deltaTime, 1000.0f);
+            gameSpeed = min(gameSpeed + 100.0f * deltaTime, 1000.0f);  // Accelerate
         }
         else if (Keyboard::isKeyPressed(Keyboard::Key::S) || Keyboard::isKeyPressed(Keyboard::Key::Down)) {
-            gameSpeed = max(gameSpeed - 100.0f * deltaTime, 50.0f);
+            gameSpeed = max(gameSpeed - 100.0f * deltaTime, 50.0f);    // Decelerate
         }
 
-        // Update distance traveled based on current speed
-        totalDistance += gameSpeed * deltaTime;
-        
-        // Update score based on distance (convert pixels to meters and round)
-        score = static_cast<int>(totalDistance / 10.0f); // 10 pixels = 1 meter
+        //--- Score Calculation ---
+        totalDistance += gameSpeed * deltaTime;           // Accumulate distance
+        score = static_cast<int>(totalDistance / 10.0f);  // Convert to score units
 
-        // Update player position
-        player.position.x += player.velocity.x * deltaTime;
+        //--- Player Movement ---
+        player.position.x += player.velocity.x * deltaTime;  // Apply horizontal movement
         
-        // Keep player within track boundaries
-        float trackLeft = window.getSize().x / 2.0f - trackWidth / 2.0f;
-        float trackRight = window.getSize().x / 2.0f + trackWidth / 2.0f;
+        // Track boundary enforcement
+        float trackLeft = static_cast<float>(window.getSize().x) / 2.0f - trackWidth / 2.0f;
+        float trackRight = static_cast<float>(window.getSize().x) / 2.0f + trackWidth / 2.0f;
         player.position.x = max(trackLeft + 15, min(trackRight - 15, player.position.x));
         
-        // Update track segments (move them down)
+        //--- Track Animation System ---
+        // Move track segments downward to simulate forward motion
         for (auto& segment : track) {
             segment.position.y += gameSpeed * deltaTime;
+            // Update visual component positions
             segment.road.setPosition(Vector2f(segment.position.x - segment.width/2, segment.position.y));
             segment.leftWall.setPosition(Vector2f(segment.position.x - segment.width/2 - 10, segment.position.y));
             segment.rightWall.setPosition(Vector2f(segment.position.x + segment.width/2, segment.position.y));
         }
         
-        // Remove track segments that have gone off screen and add new ones
+        //--- Track Segment Management ---
+        // Remove segments that have scrolled off screen
         track.erase(remove_if(track.begin(), track.end(), 
-            [&](const TrackSegment& seg) { return seg.position.y > window.getSize().y + 50; }), track.end());
+            [&](const TrackSegment& seg) { return seg.position.y > static_cast<float>(window.getSize().y) + 50; }), track.end());
         
-        // Add new track segments at the top
+        // Add new segments at the top to maintain continuous track
         while (track.size() < 50) {
             float newY = track.empty() ? -20 : track.front().position.y - 20;
-            track.insert(track.begin(), TrackSegment(newY, trackWidth, window.getSize().x));
+            track.insert(track.begin(), TrackSegment(newY, trackWidth, static_cast<float>(window.getSize().x)));
         }
         
-        // Generate obstacles based on distance traveled with irregular spacing
-        // Check if we've traveled far enough for the next obstacle spawn
+        //=== OBSTACLE GENERATION SYSTEM ===
         float distanceSinceLastObstacle = totalDistance - lastObstacleDistance;
 
+        // Spawn new obstacles based on distance traveled
         if (distanceSinceLastObstacle >= nextObstacleDistance) {
-            // Generate irregular distance interval for next spawn (200-500 pixels of travel)
+            // Randomize next spawn distance
             uniform_real_distribution<float> distanceDist(200.0f, 500.0f);
             nextObstacleDistance = distanceDist(gen);
-            lastObstacleDistance = totalDistance; // Update last spawn distance
+            lastObstacleDistance = totalDistance;
             
-            // Reduce number of obstacles per spawn (1-2 instead of 1-3)
+            // Determine number of obstacles to spawn
             uniform_int_distribution<int> countDist(1, 2);
             int numObstacles = countDist(gen);
             
-            // Try to spawn obstacles without overlapping
+            // Define spawn area within track bounds
             uniform_real_distribution<float> xDist(trackLeft + 30, trackRight - 30);
             
+            // Attempt to place each obstacle
             for (int i = 0; i < numObstacles; ++i) {
                 int attempts = 0;
-                const int maxAttempts = 10; // Prevent infinite loops
+                const int maxAttempts = 10;  // Prevent infinite loops
                 
                 while (attempts < maxAttempts) {
-                    float newX = xDist(gen);
-                    float newY = -50.0f; // Spawn above screen
+                    float newX = xDist(gen);   // Random X position
+                    float newY = -50.0f;       // Spawn above screen
                     
-                    // Check if this position is valid (not overlapping with existing obstacles)
+                    // Validate position doesn't conflict with existing obstacles
                     if (isPositionValid(newX, newY, obstacles, 80.0f)) {
                         obstacles.emplace_back(newX, newY);
-                        break; // Successfully placed obstacle
+                        
+                        // Configure obstacle sprite
+                        if (carSpriteSheetLoaded && !carSpriteRects.empty()) {
+                            Obstacle& newObstacle = obstacles.back();
+                            
+                            // Validate sprite index bounds
+                            if (newObstacle.spriteIndex >= 0 && newObstacle.spriteIndex < static_cast<int>(carSpriteRects.size())) {
+                                newObstacle.sprite = Sprite(carSpriteSheet);
+                                newObstacle.sprite->setTextureRect(carSpriteRects[newObstacle.spriteIndex]);
+                                
+                                // Calculate scaling for obstacle size
+                                Vector2u textureSize = carSpriteSheet.getSize();
+                                int actualSpriteWidth = textureSize.x / SPRITES_PER_ROW;
+                                
+                                float scale = 40.0f / actualSpriteWidth;  // Target 40px width
+                                newObstacle.sprite->setScale(Vector2f(scale, scale));
+                                newObstacle.sprite->setOrigin(Vector2f(actualSpriteWidth / 2.0f, textureSize.y / 2.0f));
+                                
+                                cout << "Obstacle sprite " << newObstacle.spriteIndex << " initialized with scale: " << scale << endl;
+                            } else {
+                                cerr << "Invalid sprite index: " << newObstacle.spriteIndex << endl;
+                            }
+                        }
+                        break;  // Successfully placed obstacle
                     }
                     attempts++;
                 }
             }
         }
         
-        // Update obstacles
+        //=== OBSTACLE UPDATE SYSTEM ===
         for (auto& obstacle : obstacles) {
+            // Move obstacle with combined speed (game speed + obstacle speed)
             obstacle.position.y += (gameSpeed + obstacle.velocity.y) * deltaTime;
-            obstacle.shape.setPosition(obstacle.position);
+            
+            // Update visual representation
+            if (carSpriteSheetLoaded && obstacle.sprite.has_value()) {
+                obstacle.sprite->setPosition(obstacle.position);
+            } else {
+                obstacle.shape.setPosition(obstacle.position);
+            }
+            
+            //--- Obstacle Audio Initialization ---
+            if (masterObstacleEngineBufferLoaded && !obstacle.soundInitialized) {
+                // Create personal copy of sound data (prevents interference)
+                obstacle.personalSoundBuffer = new SoundBuffer(masterObstacleEngineBuffer);
+                obstacle.engineSound = new Sound(*obstacle.personalSoundBuffer);
+                obstacle.engineSound->setLooping(true);
+                
+                // Add random pitch variation for audio diversity
+                float pitchVariation = 0.9f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
+                obstacle.engineSound->setPitch(pitchVariation);
+                
+                // Add random volume variation
+                float volumeVariation = 0.8f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
+                obstacle.soundVolume = volumeVariation;
+                
+                obstacle.soundInitialized = true;
+            }
+            
+            //--- Spatial Audio System ---
+            if (obstacle.soundInitialized && obstacle.engineSound) {
+                float distance = calculateDistance(obstacle.position, player.position);
+                
+                if (distance <= MAX_OBSTACLE_SOUND_DISTANCE) {
+                    // Calculate volume based on distance (inverse relationship)
+                    float volumeRatio = 1.0f - (distance - MIN_OBSTACLE_SOUND_DISTANCE) / (MAX_OBSTACLE_SOUND_DISTANCE - MIN_OBSTACLE_SOUND_DISTANCE);
+                    volumeRatio = max(0.0f, min(1.0f, volumeRatio));
+                    
+                    // Apply volume with obstacle's personal variation
+                    float targetVolume = volumeRatio * 20.0f * obstacle.soundVolume;
+                    obstacle.engineSound->setVolume(targetVolume);
+                    
+                    // Start playback if volume is sufficient
+                    if (obstacle.engineSound->getStatus() != Sound::Status::Playing && targetVolume > 1.0f) {
+                        obstacle.engineSound->play();
+                    }
+                    
+                    // Dynamic pitch based on relative speed
+                    float relativeSpeed = (gameSpeed + obstacle.velocity.y) / 400.0f;
+                    float basePitch = 0.9f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
+                    float speedPitch = basePitch + (relativeSpeed * 0.3f);
+                    obstacle.engineSound->setPitch(speedPitch);
+                    
+                } else {
+                    // Stop audio when too distant
+                    if (obstacle.engineSound->getStatus() == Sound::Status::Playing) {
+                        obstacle.engineSound->stop();
+                    }
+                }
+            }
         }
         
-        // Remove obstacles that have gone off screen
+        //--- Obstacle Cleanup ---
+        // Remove obstacles that have moved off-screen
         obstacles.erase(remove_if(obstacles.begin(), obstacles.end(),
-            [&](const Obstacle& obs) { return obs.position.y > window.getSize().y + 50; }), obstacles.end());
+            [&](Obstacle& obs) { 
+                bool shouldRemove = obs.position.y > static_cast<float>(window.getSize().y) + 50;
+                if (shouldRemove && obs.soundInitialized && obs.engineSound && obs.engineSound->getStatus() == Sound::Status::Playing) {
+                    obs.engineSound->stop();  // Stop audio before removal
+                }
+                return shouldRemove;
+            }), obstacles.end());
         
-        // Collision detection using custom function
-        player.shape.setPosition(player.position);
+        //=== COLLISION DETECTION SYSTEM ===
+        // Update player's collision bounds
+        if (carSpriteSheetLoaded && player.sprite.has_value()) {
+            player.sprite->setPosition(player.position);
+        } else {
+            player.shape.setPosition(player.position);
+        }
+        
+        // Check collision with each obstacle
         for (const auto& obstacle : obstacles) {
-            if (checkCollision(player.shape, obstacle.shape)) {
+            bool collision = false;
+            
+            // Use appropriate collision method based on available graphics
+            if (carSpriteSheetLoaded && player.sprite.has_value() && obstacle.sprite.has_value()) {
+                collision = checkSpriteCollision(*player.sprite, *obstacle.sprite);
+            } else {
+                collision = checkCollision(player.shape, obstacle.shape);
+            }
+            
+            if (collision) {
                 gameOver = true;
-                break;
+                break;  // Exit collision loop early
             }
         }
     }
     
-    // Rendering
-    window.clear(Color::Black); // Background
+    //=== AUDIO CLEANUP ===
+    // Silence obstacle sounds during game over or pedestrian mode
+    if (gameOver || playerOutOfCar) {
+        for (auto& obstacle : obstacles) {
+            if (obstacle.soundInitialized && obstacle.engineSound && obstacle.engineSound->getStatus() == Sound::Status::Playing) {
+                obstacle.engineSound->stop();
+            }
+        }
+    }
     
-    // Draw a single full-screen road
-    static RectangleShape fullRoad;
-    static RectangleShape leftWall, rightWall;
+    // Store speed for next frame's audio calculations
+    lastGameSpeed = gameSpeed;
+    
+    //=== RENDERING PIPELINE ===
+    // Clear screen with black background
+    window.clear(Color::Black);
+    
+    //--- Background Layer ---
+    if (backgroundLoaded && backgroundSprite) {
+        // Primary background instance
+        backgroundSprite->setPosition(Vector2f(0.0f, backgroundOffset1));
+        window.draw(*backgroundSprite);
+        
+        // Secondary instance for seamless scrolling
+        Vector2u textureSize = backgroundTexture.getSize();
+        Vector2f scale = backgroundSprite->getScale();
+        float scaledHeight = textureSize.y * scale.y;
+        
+        backgroundSprite->setPosition(Vector2f(0.0f, backgroundOffset1 - scaledHeight));
+        window.draw(*backgroundSprite);
+    }
+    
+    //--- Track Layer ---
+    static RectangleShape fullRoad({trackWidth, static_cast<float>(window.getSize().y) + 100});
+    static RectangleShape leftWall({10, static_cast<float>(window.getSize().y) + 100});
+    static RectangleShape rightWall({10, static_cast<float>(window.getSize().y) + 100});
     static bool roadInitialized = false;
     
+    // Initialize road graphics (one-time setup)
     if (!roadInitialized) {
-        // Create full-screen road
-        fullRoad.setSize(Vector2f(trackWidth, window.getSize().y + 100)); // Extra height for scrolling
-        fullRoad.setFillColor(Color(102, 102, 102, 255));
+        fullRoad.setSize(Vector2f(trackWidth, static_cast<float>(window.getSize().y) + 100));
+        if (backgroundLoaded) {
+            fullRoad.setFillColor(Color(102, 102, 102, 255));  // Gray road surface
+        }
         
-        // Create walls
-        leftWall.setSize(Vector2f(10, window.getSize().y + 100));
+        leftWall.setSize(Vector2f(10, static_cast<float>(window.getSize().y) + 100));
         leftWall.setFillColor(Color::White);
         
-        rightWall.setSize(Vector2f(10, window.getSize().y + 100));
+        rightWall.setSize(Vector2f(10, static_cast<float>(window.getSize().y) + 100));
         rightWall.setFillColor(Color::White);
         
         roadInitialized = true;
     }
     
-    // Update road position for scrolling effect (only if player is in car and not stopped)
+    // Animate road surface for speed illusion
     static float roadOffset = 0;
     if (!gameOver && !playerOutOfCar && gameSpeed > 55.0f) {
         roadOffset += gameSpeed * deltaTime;
-        if (roadOffset >= 50) roadOffset -= 50; // Reset every 50 pixels for seamless loop
+        if (roadOffset >= 50) roadOffset -= 50;  // Reset for continuous animation
     }
     
-    // Position road and walls
-    float centerX = window.getSize().x / 2.0f;
+    // Position and render track elements
+    float centerX = static_cast<float>(window.getSize().x) / 2.0f;
     fullRoad.setPosition(Vector2f(centerX - trackWidth/2, -50 + roadOffset));
     leftWall.setPosition(Vector2f(centerX - trackWidth/2 - 10, -50 + roadOffset));
     rightWall.setPosition(Vector2f(centerX + trackWidth/2, -50 + roadOffset));
     
-    // Draw road and walls
     window.draw(fullRoad);
     window.draw(leftWall);
     window.draw(rightWall);
     
-    // Draw obstacles
+    //--- Obstacle Layer ---
     for (const auto& obstacle : obstacles) {
-        window.draw(obstacle.shape);
+        if (carSpriteSheetLoaded && obstacle.sprite.has_value()) {
+            window.draw(*obstacle.sprite);  // Render sprite
+        } else {
+            window.draw(obstacle.shape);   // Render fallback rectangle
+        }
     }
     
-    // Draw car (always visible, either as player or as stationary car)
+    //--- Player/Vehicle Layer ---
     if (playerOutOfCar) {
-        // Draw the stationary car at saved position
-        carShape.setPosition(carPosition);
-        window.draw(carShape);
+        // Render abandoned vehicle at stored location
+        if (carSpriteSheetLoaded && abandonedCarSprite.has_value()) {
+            abandonedCarSprite->setPosition(carPosition);
+            window.draw(*abandonedCarSprite);
+        } else {
+            carShape.setPosition(carPosition);
+            window.draw(carShape);
+        }
         
-        // Draw player as person (blue color, smaller size)
+        // Render pedestrian player
         player.shape.setFillColor(Color::Blue);
         player.shape.setPosition(player.position);
         window.draw(player.shape);
     } else {
-        // Draw player as car (red color)
-        player.shape.setFillColor(Color::Red);
-        player.shape.setPosition(player.position);
-        window.draw(player.shape);
+        // Render player in vehicle
+        if (carSpriteSheetLoaded && player.sprite.has_value()) {
+            player.sprite->setPosition(player.position);
+            window.draw(*player.sprite);
+        } else {
+            player.shape.setFillColor(Color::Red);
+            player.shape.setPosition(player.position);
+            window.draw(player.shape);
+        }
     }
     
-    // Draw secret text sequence if active and not in gap period
+    //--- UI Text Layer ---
+    // Render narrative text sequence
     if (textSequenceStarted && currentTextIndex >= 0 && currentTextIndex < static_cast<int>(secretTexts.size())) {
         Text secretText(font, secretTexts[currentTextIndex], 32);
         secretText.setFillColor(Color::Cyan);
         secretText.setOutlineColor(Color::Black);
         secretText.setOutlineThickness(2.f);
         
-        // Position text on the left side of the screen
-        float textX = 50.0f; // Left margin
-        float textY = 200.0f; // Fixed position
+        float textX = 50.0f;
+        float textY = 200.0f;
         
         secretText.setPosition(Vector2f(textX, textY));
         window.draw(secretText);
     }
     
-    // Draw "Press H for help" when text sequence is completed
+    // Render help system hint
     if (textSequenceCompleted && !helpRequested) {
         Text helpHint(font, "H - Help", 20);
         helpHint.setFillColor(Color::White);
         helpHint.setOutlineColor(Color::Black);
         helpHint.setOutlineThickness(2.f);
         auto hintBounds = helpHint.getLocalBounds();
-        helpHint.setOrigin(Vector2f(hintBounds.size.x, 0)); // Right-aligned
-        helpHint.setPosition(Vector2f(window.getSize().x - 20.f, 50.f)); // Below F1 settings
+        helpHint.setOrigin(Vector2f(hintBounds.size.x, 0));  // Right-align
+        helpHint.setPosition(Vector2f(static_cast<float>(window.getSize().x) - 20.f, 50.f));
         window.draw(helpHint);
     }
     
-    // Draw help instructions when requested
+    // Render help instructions overlay
     if (helpRequested) {
+        // Main title
         Text helpText1(font, "To end this level:", 28);
         helpText1.setFillColor(Color::Yellow);
         helpText1.setOutlineColor(Color::Black);
         helpText1.setOutlineThickness(2.f);
         auto bounds1 = helpText1.getLocalBounds();
         helpText1.setOrigin(Vector2f(bounds1.size.x / 2.f, bounds1.size.y / 2.f));
-        helpText1.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 2.f - 80));
+        helpText1.setPosition(Vector2f(static_cast<float>(window.getSize().x) / 2.f, static_cast<float>(window.getSize().y) / 2.f - 80));
         window.draw(helpText1);
         
+        // Step-by-step instructions
         Text helpText2(font, "Stop the car", 24);
         helpText2.setFillColor(Color::White);
         helpText2.setOutlineColor(Color::Black);
         helpText2.setOutlineThickness(2.f);
         auto bounds2 = helpText2.getLocalBounds();
         helpText2.setOrigin(Vector2f(bounds2.size.x / 2.f, bounds2.size.y / 2.f));
-        helpText2.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 2.f - 40));
+        helpText2.setPosition(Vector2f(static_cast<float>(window.getSize().x) / 2.f, static_cast<float>(window.getSize().y) / 2.f - 40));
         window.draw(helpText2);
         
         Text helpText3(font, "Get some fresh air", 24);
@@ -530,7 +969,7 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
         helpText3.setOutlineThickness(2.f);
         auto bounds3 = helpText3.getLocalBounds();
         helpText3.setOrigin(Vector2f(bounds3.size.x / 2.f, bounds3.size.y / 2.f));
-        helpText3.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 2.f));
+        helpText3.setPosition(Vector2f(static_cast<float>(window.getSize().x) / 2.f, static_cast<float>(window.getSize().y) / 2.f));
         window.draw(helpText3);
         
         Text helpText4(font, "Leave this place", 24);
@@ -539,10 +978,10 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
         helpText4.setOutlineThickness(2.f);
         auto bounds4 = helpText4.getLocalBounds();
         helpText4.setOrigin(Vector2f(bounds4.size.x / 2.f, bounds4.size.y / 2.f));
-        helpText4.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 2.f + 40));
+        helpText4.setPosition(Vector2f(static_cast<float>(window.getSize().x) / 2.f, static_cast<float>(window.getSize().y) / 2.f + 40));
         window.draw(helpText4);
         
-        // Show status
+        // Dynamic status feedback
         if (gameSpeed <= 55.0f && !playerOutOfCar) {
             Text statusText(font, "Car stopped! Press F to get out", 20);
             statusText.setFillColor(Color::Green);
@@ -550,7 +989,7 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
             statusText.setOutlineThickness(2.f);
             auto statusBounds = statusText.getLocalBounds();
             statusText.setOrigin(Vector2f(statusBounds.size.x / 2.f, statusBounds.size.y / 2.f));
-            statusText.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 2.f + 80));
+            statusText.setPosition(Vector2f(static_cast<float>(window.getSize().x) / 2.f, static_cast<float>(window.getSize().y) / 2.f + 80));
             window.draw(statusText);
         } else if (playerOutOfCar) {
             Text statusText(font, "Be free from this nightmare", 20);
@@ -559,17 +998,18 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
             statusText.setOutlineThickness(2.f);
             auto statusBounds = statusText.getLocalBounds();
             statusText.setOrigin(Vector2f(statusBounds.size.x / 2.f, statusBounds.size.y / 2.f));
-            statusText.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 2.f + 80));
+            statusText.setPosition(Vector2f(static_cast<float>(window.getSize().x) / 2.f, static_cast<float>(window.getSize().y) / 2.f + 80));
             window.draw(statusText);
         }
         
+        // Help close instruction
         Text closeHelp(font, "Press H again to close help", 16);
         closeHelp.setFillColor(Color::White);
-        closeHelp.setPosition(Vector2f(20, window.getSize().y - 40));
+        closeHelp.setPosition(Vector2f(20, static_cast<float>(window.getSize().y) - 40));
         window.draw(closeHelp);
     }
     
-    // Show "Press F to exit car" hint when car is stopped (regardless of help menu)
+    // Vehicle exit prompt
     if (textSequenceCompleted && !helpRequested && gameSpeed <= 55.0f && !playerOutOfCar) {
         Text exitHint(font, "Press F to exit car", 20);
         exitHint.setFillColor(Color::Green);
@@ -577,11 +1017,11 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
         exitHint.setOutlineThickness(2.f);
         auto exitBounds = exitHint.getLocalBounds();
         exitHint.setOrigin(Vector2f(exitBounds.size.x / 2.f, exitBounds.size.y / 2.f));
-        exitHint.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y - 100));
+        exitHint.setPosition(Vector2f(static_cast<float>(window.getSize().x) / 2.f, static_cast<float>(window.getSize().y) - 100));
         window.draw(exitHint);
     }
     
-    // Draw UI
+    // Core game UI elements
     Text scoreText(font, "Distance: " + to_string(score) + "m", 36);
     scoreText.setFillColor(Color::White);
     scoreText.setOutlineColor(Color::Black);
@@ -596,46 +1036,45 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
     speedText.setPosition(Vector2f(20, 70));
     window.draw(speedText);
     
-    // Debug info (optional - remove in final version)
-    if (musicCurrentlyOff && !textSequenceStarted) {
-        float timeRemaining = 60.0f - musicOffTimer.getElapsedTime().asSeconds();
-        if (timeRemaining > 0) {
-            Text debugText(font, "Music off time: " + to_string(static_cast<int>(timeRemaining)) + "s remaining", 20);
-            debugText.setFillColor(Color::Yellow);
-            debugText.setPosition(Vector2f(20, 110));
-            window.draw(debugText);
-        }
-    }
-    
+    //=== GAME OVER INTERFACE ===
     if (gameOver) {
+        // Game over message
         Text gameOverText(font, "GAME OVER! Distance: " + to_string(score) + "m", 36);
         gameOverText.setFillColor(Color::Red);
         gameOverText.setOutlineColor(Color::Black);
         gameOverText.setOutlineThickness(3.f);
         auto bounds = gameOverText.getLocalBounds();
         gameOverText.setOrigin(Vector2f(bounds.size.x / 2.f, bounds.size.y / 2.f));
-        gameOverText.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 2.f - 40));
+        gameOverText.setPosition(Vector2f(static_cast<float>(window.getSize().x) / 2.f, static_cast<float>(window.getSize().y) / 2.f - 40));
         window.draw(gameOverText);
         
+        // Restart prompt
         Text restartText(font, "Press R to restart", 32);
         restartText.setFillColor(Color::White);
         restartText.setOutlineColor(Color::Black);
         restartText.setOutlineThickness(2.f);
         auto restartBounds = restartText.getLocalBounds();
         restartText.setOrigin(Vector2f(restartBounds.size.x / 2.f, restartBounds.size.y / 2.f));
-        restartText.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 2.f + 20));
+        restartText.setPosition(Vector2f(static_cast<float>(window.getSize().x) / 2.f, static_cast<float>(window.getSize().y) / 2.f + 20));
         window.draw(restartText);
         
-        // Restart game (but keep level-persistent timers running)
+        //=== RESTART SYSTEM ===
         if (Keyboard::isKeyPressed(Keyboard::Key::R)) {
+            // Audio cleanup before reset
+            for (auto& obstacle : obstacles) {
+                if (obstacle.soundInitialized && obstacle.engineSound && obstacle.engineSound->getStatus() == Sound::Status::Playing) {
+                    obstacle.engineSound->stop();
+                }
+            }
+            
+            // Reset all game state to initial values
             gameOver = false;
             obstacles.clear();
             track.clear();
             score = 0;
             totalDistance = 0.0f;
             gameSpeed = 200.0f;
-            player.position = Vector2f(window.getSize().x / 2.0f, window.getSize().y * 0.8f);
-            // Reset player shape back to car size
+            player.position = Vector2f(static_cast<float>(window.getSize().x) / 2.0f, static_cast<float>(window.getSize().y) * 0.8f);
             player.shape.setSize(Vector2f(30, 50));
             player.shape.setOrigin(Vector2f(15, 25));
             gameTimer.restart();
@@ -643,15 +1082,38 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
             gameInitialized = false;
             helpRequested = false;
             playerOutOfCar = false;
+            
+            // Clear abandoned car reference
+            abandonedCarSprite.reset();
         }
     }
 
-    // Handle menu and settings navigation
+    //=== NAVIGATION CONTROLS ===
+    // Return to main menu
     if (Keyboard::isKeyPressed(Keyboard::Key::M)) {
+        // Complete cleanup before state transition
+        if (engineMusicLoaded && engineMusic.getStatus() == Music::Status::Playing) {
+            engineMusic.stop();
+        }
+        
+        for (auto& obstacle : obstacles) {
+            if (obstacle.soundInitialized && obstacle.engineSound && obstacle.engineSound->getStatus() == Sound::Status::Playing) {
+                obstacle.engineSound->stop();
+            }
+        }
+        
+        if (backgroundSprite) {
+            delete backgroundSprite;
+            backgroundSprite = nullptr;
+            backgroundLoaded = false;
+        }
+        
         state = MENU;
         gameInitialized = false;
         levelTimersInitialized = false;
     }
+    
+    // Access settings menu
     if (Keyboard::isKeyPressed(Keyboard::Key::F1)) {
         extern GameState previousState;
         previousState = PLAYING3;

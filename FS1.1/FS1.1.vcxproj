@@ -142,6 +142,7 @@
   <ItemGroup>
     <ClInclude Include="GameState.h" />
     <ClInclude Include="Maze.h" />
+    <ClInclude Include="NavigationSounds.h" />
     <ClInclude Include="PlayingState.h" />
     <ClInclude Include="PlayingState2.h" />
     <ClInclude Include="PlayingState3.h" />

@@ -1,6 +1,8 @@
 #pragma once
 #include <SFML/Graphics.hpp>
 #include "GameState.h"
+#include "Maze.h"
+#include "SettingsState.h"
 
 using namespace sf;
 using namespace std;

@@ -1,6 +1,11 @@
 #pragma once
 #include <SFML/Graphics.hpp>
 #include "GameState.h"
+#include "SettingsState.h"
+#include <random>
+#include <set>
+#include <map>
+#include <string>
 
 using namespace sf;
 using namespace std;
