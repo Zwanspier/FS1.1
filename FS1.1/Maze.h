@@ -4,6 +4,9 @@
 #include <random>
 #include <stack>
 #include <algorithm>
+#include <iostream>
+#include <optional>
+#include <algorithm>
 
 using namespace sf;
 using namespace std;
@@ -12,7 +15,7 @@ using namespace std;
 // The Maze class handles complete maze functionality including:
 // - Procedural maze generation using recursive backtracking
 // - Smooth player movement with collision detection
-// - Dynamic rendering with adjustable wall visibility
+// - Dynamic rendering with adjustable wall visibility and textures
 // - Win condition detection and exit management
 class Maze {
 public:
@@ -30,8 +33,21 @@ public:
     // Ensures exit is always reachable from starting position
     void generate();
 
+    //=== MAZE RESIZE SYSTEM ===
+    // Safely resize the maze with new dimensions and regenerate
+    // Parameters:
+    //   screenWidth - New available width in pixels for maze rendering
+    //   screenHeight - New available height in pixels for maze rendering  
+    //   cellSize - New size of each maze cell in pixels
+    void resize(int screenWidth, int screenHeight, int cellSize);
+
+    //=== TEXTURE LOADING SYSTEM ===
+    // Load background and wall textures from files
+    // Returns: true if all textures loaded successfully, false otherwise
+    bool loadTextures();
+
     //=== RENDERING SYSTEM ===
-    // Draw the complete maze structure including walls and exit marker
+    // Draw the complete maze structure including background, walls and exit marker
     // Uses gamma setting from SettingsState for dynamic wall visibility
     void draw(RenderWindow& window);
 
@@ -78,6 +94,20 @@ private:
     Vector2f playerPixelPos;               // Player's smooth pixel position (for sub-cell movement)
     CircleShape player;                    // SFML shape for rendering the player
     float playerSpeed = 200.0f;            // Player movement speed in pixels per second
+
+    //=== TEXTURE SYSTEM ===
+    Texture backgroundTexture;             // Background texture for maze floor
+    Texture wallTexture;                   // Texture for maze walls
+    optional<Sprite> backgroundSprite;     // Optional sprite for background rendering (avoids default constructor issues)
+    bool texturesLoaded = false;           // Flag indicating if textures are successfully loaded
+
+    //=== INITIALIZATION SYSTEM ===
+    // Common initialization logic used by constructor and resize
+    // Parameters:
+    //   screenWidth - Available width in pixels for maze rendering
+    //   screenHeight - Available height in pixels for maze rendering  
+    //   cellSize - Size of each maze cell in pixels
+    void initialize(int screenWidth, int screenHeight, int cellSize);
 
     //=== COLLISION DETECTION SYSTEM ===
     // Check if the player can move to a given pixel position without colliding with walls

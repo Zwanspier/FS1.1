@@ -54,9 +54,8 @@ void handlePlayingState2(RenderWindow& window, bool& running, GameState& state)
         // Recalculate optimal cell size for new dimensions
         cellSize = min(window.getSize().x / currentMazeDims.x, window.getSize().y / currentMazeDims.y);
         
-        // Create new maze instance with updated parameters
-        maze = Maze(currentMazeDims.x * cellSize, currentMazeDims.y * cellSize, cellSize);
-        maze.generate();              // Generate new maze layout
+        // Safely resize existing maze instance with updated parameters
+        maze.resize(currentMazeDims.x * cellSize, currentMazeDims.y * cellSize, cellSize);
         generated = true;             // Mark as generated
         clock.restart();              // Reset timing
         mazeNeedsRegeneration = false; // Clear regeneration flag

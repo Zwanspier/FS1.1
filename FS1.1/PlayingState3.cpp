@@ -7,7 +7,7 @@
 struct Car {
     Vector2f position;        // Current X,Y coordinates on screen
     Vector2f velocity;        // Movement speed and direction per frame
-    float speed = 300.0f;     // Standard movement speed in pixels/second
+    float speed = 400.0f;     // Standard movement speed in pixels/second
     float maxSpeed = 500.0f;  // Maximum possible speed
     optional<Sprite> sprite;  // Optional sprite for car image (may be null)
     RectangleShape shape;     // Fallback rectangle if no sprite loaded
