@@ -5,6 +5,7 @@
 #include "Playingstate2.h"
 #include "PlayingState3.h"
 #include "PreLevelState.h"
+#include "IntroductionState.h"  // NEW: Include introduction state
 #include "SettingsState.h"
 #include "GameState.h"
 #include "NavigationSounds.h"
@@ -145,8 +146,8 @@ int main()
     const vector<string> options = { "Start", "Settings", "Exit" };
     int selected = 0;           // Index of the currently selected menu option
     int previousSelected = -1;  // Track previous selection for hover sound logic
-    GameState state = MENU;     // Current state of the game application
-
+    GameState state = INTRODUCTION;  // NEW: Start with introduction instead of MENU
+    
     bool running = true;        // Controls the main game loop execution
 
     //=== MENU TEXT OBJECTS PREPARATION ===
@@ -338,7 +339,9 @@ int main()
         string desiredSong;
 
         // Select appropriate background music for each game state
-        if (state == MENU) {
+        if (state == INTRODUCTION) {
+            desiredSong = "Sounds/PiecebyPiece.mp3";      // Introduction music
+        } else if (state == MENU) {
             desiredSong = "Sounds/PiecebyPiece.mp3";      // Menu music
         } else if (state == PLAYING) {
             desiredSong = "Sounds/PiecebyPiece2.mp3";     // Level 1 music
@@ -378,7 +381,11 @@ int main()
 
         //=== STATE-BASED RENDERING SYSTEM ===
         // Render appropriate content based on current game state
-        if (state == MENU) {
+        if (state == INTRODUCTION) {
+            // NEW: Show introduction screen explaining the game's purpose
+            handleIntroductionState(window, running, state);
+        }
+        else if (state == MENU) {
             //=== MAIN MENU RENDERING ===
             // Draw title and all menu options
             window.draw(title);                    // Application title
@@ -421,8 +428,8 @@ int main()
         }
 
         //=== PERSISTENT UI OVERLAY ===
-        // Draw the permanent settings hint on all states except settings menu
-        if (state != SETTINGS) {
+        // Draw the permanent settings hint on all states except settings menu and introduction
+        if (state != SETTINGS && state != INTRODUCTION) {
             window.draw(settingsHint);  // F1 - Settings hint
         }
 

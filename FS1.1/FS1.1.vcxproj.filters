@@ -36,6 +36,9 @@
     <ClCompile Include="SettingsState.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="IntroductionState.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="SettingsState.h">
@@ -60,6 +63,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="NavigationSounds.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="IntroductionState.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

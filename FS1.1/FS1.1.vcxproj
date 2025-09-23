@@ -132,6 +132,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="FS1.1.cpp" />
+    <ClCompile Include="IntroductionState.cpp" />
     <ClCompile Include="Maze.cpp" />
     <ClCompile Include="PlayingState.cpp" />
     <ClCompile Include="Playingstate2.cpp" />
@@ -141,6 +142,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="GameState.h" />
+    <ClInclude Include="IntroductionState.h" />
     <ClInclude Include="Maze.h" />
     <ClInclude Include="NavigationSounds.h" />
     <ClInclude Include="PlayingState.h" />

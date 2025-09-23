@@ -13,6 +13,9 @@ struct Car {
     RectangleShape shape;     // Fallback rectangle if no sprite loaded
     int spriteIndex = 0;      // Index into sprite sheet for car appearance
     
+    // Hitbox configuration
+    float hitboxSizeMultiplier = 1.0f;
+
     // Constructor initializes default values
     Car() : shape({30, 50}) {
         velocity = Vector2f(0, 0);           // Start stationary
@@ -30,7 +33,9 @@ struct Obstacle {
     RectangleShape shape;     // Fallback rectangle shape
     bool active = true;       // Whether obstacle is still in play
     int spriteIndex = 0;      // Which car sprite to use from sheet
-    
+                                
+    float hitboxSizeMultiplier = 0.7f;
+
     // Audio system - each obstacle has independent sound
     Sound* engineSound = nullptr;              // SFML Sound object pointer
     SoundBuffer* personalSoundBuffer = nullptr; // Each obstacle owns sound data
@@ -59,12 +64,14 @@ struct Obstacle {
         }
     }
     
-    // Copy constructor: creates new obstacle from existing (audio not copied)
+    // Copy constructor: creates new obstacle from existing 
     Obstacle(const Obstacle& other) : position(other.position), velocity(other.velocity), 
                                      shape(other.shape), active(other.active),
+                                     sprite(other.sprite),
+                                     spriteIndex(other.spriteIndex),
+                                     hitboxSizeMultiplier(other.hitboxSizeMultiplier),
                                      soundInitialized(false), soundVolume(0.0f), 
                                      engineSound(nullptr), personalSoundBuffer(nullptr) {
-        spriteIndex = other.spriteIndex;  // Copy sprite selection
         // Note: Each obstacle needs its own audio objects for proper mixing
     }
     
@@ -77,6 +84,7 @@ struct Obstacle {
             active = other.active;
             spriteIndex = other.spriteIndex;
             sprite = other.sprite;
+            hitboxSizeMultiplier = other.hitboxSizeMultiplier;
             // Audio objects are not copied - each obstacle maintains its own
         }
         return *this;
@@ -116,6 +124,43 @@ struct TrackSegment {
 
 //=== UTILITY FUNCTIONS ===
 
+// Get smaller hitbox bounds for improved collision detection
+// This creates a hitbox that is smaller than the visual sprite for better gameplay feel
+FloatRect getHitboxBounds(const Sprite& sprite, float sizeMultiplier) {
+    FloatRect spriteBounds = sprite.getGlobalBounds();
+    
+    // Calculate reduced dimensions
+    float reducedWidth = spriteBounds.size.x * sizeMultiplier;
+    float reducedHeight = spriteBounds.size.y * sizeMultiplier;
+    
+    // Center the smaller hitbox within the sprite bounds
+    float offsetX = (spriteBounds.size.x - reducedWidth) / 2.0f;
+    float offsetY = (spriteBounds.size.y - reducedHeight) / 2.0f;
+    
+    return FloatRect(
+        Vector2f(spriteBounds.position.x + offsetX, spriteBounds.position.y + offsetY),
+        Vector2f(reducedWidth, reducedHeight)
+    );
+}
+
+// Overload for RectangleShape (fallback when sprites aren't available)
+FloatRect getHitboxBounds(const RectangleShape& shape, float sizeMultiplier) {
+    FloatRect shapeBounds = shape.getGlobalBounds();
+    
+    // Calculate reduced dimensions
+    float reducedWidth = shapeBounds.size.x * sizeMultiplier;
+    float reducedHeight = shapeBounds.size.y * sizeMultiplier;
+    
+    // Center the smaller hitbox within the shape bounds
+    float offsetX = (shapeBounds.size.x - reducedWidth) / 2.0f;
+    float offsetY = (shapeBounds.size.y - reducedHeight) / 2.0f;
+    
+    return FloatRect(
+        Vector2f(shapeBounds.position.x + offsetX, shapeBounds.position.y + offsetY),
+        Vector2f(reducedWidth, reducedHeight)
+    );
+}
+
 // AABB (Axis-Aligned Bounding Box) collision detection for rectangles
 bool checkCollision(const RectangleShape& rect1, const RectangleShape& rect2) {
     FloatRect bounds1 = rect1.getGlobalBounds();  // Get rectangle 1's screen bounds
@@ -128,13 +173,34 @@ bool checkCollision(const RectangleShape& rect1, const RectangleShape& rect2) {
             bounds1.position.y + bounds1.size.y > bounds2.position.y);
 }
 
-// Collision detection for sprite objects (same algorithm, different types)
-bool checkSpriteCollision(const Sprite& sprite1, const Sprite& sprite2) {
-    FloatRect bounds1 = sprite1.getGlobalBounds();
-    FloatRect bounds2 = sprite2.getGlobalBounds();
+// Enhanced collision detection for sprite objects with customizable hitbox size
+bool checkSpriteCollision(const Sprite& sprite1, const Sprite& sprite2, float sizeMultiplier1 = 0.7f, float sizeMultiplier2 = 0.7f) {
+    FloatRect bounds1 = getHitboxBounds(sprite1, sizeMultiplier1);
+    FloatRect bounds2 = getHitboxBounds(sprite2, sizeMultiplier2);
     
     auto intersection = bounds1.findIntersection(bounds2);
     return intersection.has_value();  // Returns true if intersection exists
+}
+
+// Mixed collision detection (sprite vs rectangle shape)
+bool checkMixedCollision(const Sprite& sprite, const RectangleShape& shape, float spriteMultiplier = 0.7f, float shapeMultiplier = 0.7f) {
+    FloatRect spriteBounds = getHitboxBounds(sprite, spriteMultiplier);
+    FloatRect shapeBounds = getHitboxBounds(shape, shapeMultiplier);
+    
+    auto intersection = spriteBounds.findIntersection(shapeBounds);
+    return intersection.has_value();
+}
+
+// Enhanced collision detection for rectangles with customizable hitbox size
+bool checkCollision(const RectangleShape& rect1, const RectangleShape& rect2, float sizeMultiplier1 = 0.7f, float sizeMultiplier2 = 0.7f) {
+    FloatRect bounds1 = getHitboxBounds(rect1, sizeMultiplier1);
+    FloatRect bounds2 = getHitboxBounds(rect2, sizeMultiplier2);
+    
+    // Check for overlap in both X and Y axes
+    return (bounds1.position.x < bounds2.position.x + bounds2.size.x &&
+            bounds1.position.x + bounds1.size.x > bounds2.position.x &&
+            bounds1.position.y < bounds2.position.y + bounds2.size.y &&
+            bounds1.position.y + bounds1.size.y > bounds2.position.y);
 }
 
 // Validates obstacle placement to prevent clustering
@@ -200,7 +266,7 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
     static const float MAX_OBSTACLE_SOUND_DISTANCE = 800.0f; // Maximum audible range
     static const float MIN_OBSTACLE_SOUND_DISTANCE = 100.0f; // Distance for full volume
     
-    // Special narrative system (triggers after 60 seconds of silence)
+    // Special narrative system (triggers after 10 seconds of silence)
     static Clock musicOffTimer;            // Tracks duration of music being off
     static bool musicWasOff = false;       // Previous frame's music state
     static Clock textDisplayTimer;         // Controls text sequence timing
@@ -223,7 +289,9 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
     
     // Narrative text content
     static const vector<string> secretTexts = {
-        "That's better.",
+		"Blah blah blah...",
+
+        /*"That's better.",
         "That moment where everything goes quiet.",
         "Isn't it soothing.",
         "All the noise washed away.",
@@ -237,7 +305,7 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
         "Or you can go the next level.",
         "If there is one...",
         "I'm sure you'll figure it out.",
-        "I'll be here if you need me."
+        "I'll be here if you need me."*/
     };
     
     //=== GAME STATE VARIABLES ===
@@ -336,8 +404,9 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
     // Engine music initialization
     if (!engineMusicLoaded) {
         if (engineMusic.openFromFile("Sounds/Engine4.ogg")) {
-            engineMusic.setLooping(true);      // Enable continuous loop
-            engineMusic.setVolume(30.0f);      // Set initial volume
+            engineMusic.setLooping(true);                    // Enable continuous loop
+            float initialVolume = (60.0f / 100.0f) * musicVolume;  // UPDATED: Increased initial volume from 30% to 60%
+            engineMusic.setVolume(initialVolume);            // Set volume based on global setting
             engineMusicLoaded = true;
         } else {
             cerr << "Failed to load Engine4.ogg" << endl;
@@ -441,7 +510,8 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
     }
     
     //=== DYNAMIC AUDIO SYSTEM ===
-    // Adjust engine sound based on vehicle speed
+    // Adjust engine sound based on vehicle speed and global volume settings
+    // All engine sounds in Level 3 now respect the global musicVolume setting from settings menu
     if (engineMusicLoaded) {
         if (!playerOutOfCar && !gameOver) {
             // Normalize speed to 0-1 range for audio calculations
@@ -452,9 +522,10 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
             float pitch = 0.8f + (speedRatio * 0.6f);       // Range: 0.8 to 1.4
             engineMusic.setPitch(pitch);
             
-            // Higher speed increases volume
-            float volume = 20.0f + (speedRatio * 20.0f);    // Range: 20 to 40
-            engineMusic.setVolume(volume);
+            // UPDATED: Increased base volume for louder engine sound - Range: 40 to 80 (was 20 to 40)
+            float baseVolume = 40.0f + (speedRatio * 40.0f);    // Range: 40 to 80
+            float adjustedVolume = (baseVolume / 100.0f) * musicVolume;  // Scale by global volume
+            engineMusic.setVolume(adjustedVolume);
             
             // Ensure music continues playing
             if (engineMusic.getStatus() != Music::Status::Playing) {
@@ -475,8 +546,8 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
         if (!musicWasOff) {
             musicOffTimer.restart();  // Begin timing silence period
         }
-        // Trigger narrative after 60 seconds of silence
-        if (!textSequenceStarted && musicOffTimer.getElapsedTime().asSeconds() >= 60.0f) {
+        // Trigger narrative after 10 seconds of silence
+        if (!textSequenceStarted && musicOffTimer.getElapsedTime().asSeconds() >= 10.0f) {
             textSequenceStarted = true;
             textDisplayTimer.restart();
             currentTextIndex = 0;
@@ -746,12 +817,14 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
                     float volumeRatio = 1.0f - (distance - MIN_OBSTACLE_SOUND_DISTANCE) / (MAX_OBSTACLE_SOUND_DISTANCE - MIN_OBSTACLE_SOUND_DISTANCE);
                     volumeRatio = max(0.0f, min(1.0f, volumeRatio));
                     
-                    // Apply volume with obstacle's personal variation
-                    float targetVolume = volumeRatio * 20.0f * obstacle.soundVolume;
-                    obstacle.engineSound->setVolume(targetVolume);
+                    // UPDATED: Increased base volume for louder obstacle engines - from 20.0f to 40.0f
+                    float baseVolume = volumeRatio * 40.0f * obstacle.soundVolume;  // Base volume calculation (doubled)
+                    float adjustedVolume = (baseVolume / 100.0f) * musicVolume;     // Scale by global volume
+                    obstacle.engineSound->setVolume(adjustedVolume);
                     
-                    // Start playback if volume is sufficient
-                    if (obstacle.engineSound->getStatus() != Sound::Status::Playing && targetVolume > 1.0f) {
+                    // Start playback if volume is sufficient (adjusted threshold for global volume)
+                    float minimumThreshold = (2.0f / 100.0f) * musicVolume;  // UPDATED: Increased threshold from 1.0f to 2.0f
+                    if (obstacle.engineSound->getStatus() != Sound::Status::Playing && adjustedVolume > minimumThreshold) {
                         obstacle.engineSound->play();
                     }
                     
@@ -781,7 +854,7 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
                 return shouldRemove;
             }), obstacles.end());
         
-        //=== COLLISION DETECTION SYSTEM ===
+        //=== ENHANCED COLLISION DETECTION SYSTEM ===
         // Update player's collision bounds
         if (carSpriteSheetLoaded && player.sprite.has_value()) {
             player.sprite->setPosition(player.position);
@@ -789,15 +862,27 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
             player.shape.setPosition(player.position);
         }
         
-        // Check collision with each obstacle
+        // Check collision with each obstacle using smaller hitboxes
         for (const auto& obstacle : obstacles) {
             bool collision = false;
             
-            // Use appropriate collision method based on available graphics
+            // Use appropriate collision method based on available graphics with reduced hitbox size
             if (carSpriteSheetLoaded && player.sprite.has_value() && obstacle.sprite.has_value()) {
-                collision = checkSpriteCollision(*player.sprite, *obstacle.sprite);
+                // Both use sprites - use enhanced sprite collision with smaller hitboxes
+                collision = checkSpriteCollision(*player.sprite, *obstacle.sprite, 
+                                               player.hitboxSizeMultiplier, obstacle.hitboxSizeMultiplier);
+            } else if (carSpriteSheetLoaded && player.sprite.has_value() && !obstacle.sprite.has_value()) {
+                // Player has sprite, obstacle uses shape - mixed collision
+                collision = checkMixedCollision(*player.sprite, obstacle.shape, 
+                                              player.hitboxSizeMultiplier, obstacle.hitboxSizeMultiplier);
+            } else if (!player.sprite.has_value() && carSpriteSheetLoaded && obstacle.sprite.has_value()) {
+                // Player uses shape, obstacle has sprite - mixed collision (reversed parameters)
+                collision = checkMixedCollision(*obstacle.sprite, player.shape, 
+                                              obstacle.hitboxSizeMultiplier, player.hitboxSizeMultiplier);
             } else {
-                collision = checkCollision(player.shape, obstacle.shape);
+                // Both use shapes - enhanced shape collision with smaller hitboxes
+                collision = checkCollision(player.shape, obstacle.shape, 
+                                         player.hitboxSizeMultiplier, obstacle.hitboxSizeMultiplier);
             }
             
             if (collision) {
@@ -1089,34 +1174,81 @@ void handlePlayingState3(RenderWindow& window, bool& running, GameState& state)
     }
 
     //=== NAVIGATION CONTROLS ===
-    // Return to main menu
-    if (Keyboard::isKeyPressed(Keyboard::Key::M)) {
-        // Complete cleanup before state transition
-        if (engineMusicLoaded && engineMusic.getStatus() == Music::Status::Playing) {
-            engineMusic.stop();
-        }
-        
-        for (auto& obstacle : obstacles) {
-            if (obstacle.soundInitialized && obstacle.engineSound && obstacle.engineSound->getStatus() == Sound::Status::Playing) {
-                obstacle.engineSound->stop();
+    // Static variables for input state tracking to prevent key repeat
+    static bool mPressed = false;        // M key state
+    static bool f1Pressed = false;      // F1 key state
+    static bool escPressed = false;     // ESC key state (NEW)
+    
+    // NEW: Return to pre-level screen (ESC key)
+    if (Keyboard::isKeyPressed(Keyboard::Key::Escape)) {
+        if (!escPressed) {  // Edge detection to prevent key repeat
+            // Complete cleanup before state transition
+            if (engineMusicLoaded && engineMusic.getStatus() == Music::Status::Playing) {
+                engineMusic.stop();
             }
+            
+            for (auto& obstacle : obstacles) {
+                if (obstacle.soundInitialized && obstacle.engineSound && obstacle.engineSound->getStatus() == Sound::Status::Playing) {
+                    obstacle.engineSound->stop();
+                }
+            }
+            
+            if (backgroundSprite) {
+                delete backgroundSprite;
+                backgroundSprite = nullptr;
+                backgroundLoaded = false;
+            }
+            
+            state = PRELEVEL3;              // Return to Level 3 pre-level screen
+            gameInitialized = false;        // Reset for potential restart
+            levelTimersInitialized = false; // Reset level timers
+            escPressed = true;              // Mark key as pressed
         }
-        
-        if (backgroundSprite) {
-            delete backgroundSprite;
-            backgroundSprite = nullptr;
-            backgroundLoaded = false;
-        }
-        
-        state = MENU;
-        gameInitialized = false;
-        levelTimersInitialized = false;
+    }
+    else {
+        escPressed = false;  // Reset when key released
     }
     
-    // Access settings menu
+    // Return to main menu (M key)
+    if (Keyboard::isKeyPressed(Keyboard::Key::M)) {
+        if (!mPressed) {  // Edge detection to prevent key repeat
+            // Complete cleanup before state transition
+            if (engineMusicLoaded && engineMusic.getStatus() == Music::Status::Playing) {
+                engineMusic.stop();
+            }
+            
+            for (auto& obstacle : obstacles) {
+                if (obstacle.soundInitialized && obstacle.engineSound && obstacle.engineSound->getStatus() == Sound::Status::Playing) {
+                    obstacle.engineSound->stop();
+                }
+            }
+            
+            if (backgroundSprite) {
+                delete backgroundSprite;
+                backgroundSprite = nullptr;
+                backgroundLoaded = false;
+            }
+            
+            state = MENU;
+            gameInitialized = false;
+            levelTimersInitialized = false;
+            mPressed = true;                // Mark key as pressed
+        }
+    }
+    else {
+        mPressed = false;  // Reset when key released
+    }
+    
+    // Access settings menu (F1 key)
     if (Keyboard::isKeyPressed(Keyboard::Key::F1)) {
-        extern GameState previousState;
-        previousState = PLAYING3;
-        state = SETTINGS;
+        if (!f1Pressed) {  // Edge detection to prevent key repeat
+            extern GameState previousState;
+            previousState = PLAYING3;
+            state = SETTINGS;
+            f1Pressed = true;              // Mark key as pressed
+        }
+    }
+    else {
+        f1Pressed = false;  // Reset when key released
     }
 }

@@ -48,6 +48,14 @@ void handlePlayingState2(RenderWindow& window, bool& running, GameState& state)
     static Clock clock;               // Frame timing for smooth movement
     extern bool mazeNeedsRegeneration; // External flag for settings-triggered regeneration
     
+    //=== INPUT STATE TRACKING FOR EDGE DETECTION ===
+    // Static variables to track key press states and prevent key repeat
+    static bool mPressed = false;        // M key state
+    static bool f1Pressed = false;      // F1 key state
+    static bool enterPressed = false;   // ENTER key state
+    static bool hPressed = false;       // H key state (shortcut)
+    static bool escPressed = false;     // ESC key state (NEW)
+    
     //=== MAZE REGENERATION LOGIC ===
     // Recreate maze when resolution changes or settings request regeneration
     if (mazeNeedsRegeneration || currentMazeDims.x != lastMazeDims.x || currentMazeDims.y != lastMazeDims.y) {
@@ -117,27 +125,63 @@ void handlePlayingState2(RenderWindow& window, bool& running, GameState& state)
     }
     
     //=== NAVIGATION CONTROL SYSTEM ===
-    // Handle state transitions and menu navigation
+    // Handle state transitions and menu navigation with proper edge detection
     
-    // Return to main menu
+    // NEW: Return to pre-level screen (ESC key)
+    if (Keyboard::isKeyPressed(Keyboard::Key::Escape)) {
+        if (!escPressed) {  // Edge detection to prevent key repeat
+            state = PRELEVEL2;     // Return to Level 2 pre-level screen
+            generated = false;     // Reset maze generation for restart
+            escPressed = true;     // Mark key as pressed
+        }
+    }
+    else {
+        escPressed = false;  // Reset when key released
+    }
+    
+    // Return to main menu (M key)
     if (Keyboard::isKeyPressed(Keyboard::Key::M)) {
-        state = MENU;
+        if (!mPressed) {  // Edge detection to prevent key repeat
+            state = MENU;
+            mPressed = true;     // Mark key as pressed
+        }
+    }
+    else {
+        mPressed = false;  // Reset when key released
     }
     
-    // Access settings menu
+    // Access settings menu (F1 key)
     if (Keyboard::isKeyPressed(Keyboard::Key::F1)) {
-        extern GameState previousState;
-        previousState = PLAYING2;  // Store current state for return
-        state = SETTINGS;          // Open settings menu
+        if (!f1Pressed) {  // Edge detection to prevent key repeat
+            extern GameState previousState;
+            previousState = PLAYING2;  // Store current state for return
+            state = SETTINGS;          // Open settings menu
+            f1Pressed = true;          // Mark key as pressed
+        }
+    }
+    else {
+        f1Pressed = false;  // Reset when key released
     }
     
-    // Level progression - advance to next level when at exit
+    // Level progression - advance to next level when at exit (ENTER key)
     if (maze.isAtExit() && Keyboard::isKeyPressed(Keyboard::Key::Enter)) {
-        state = PRELEVEL3;  // Go to pre-level screen before level 3
+        if (!enterPressed) {  // Edge detection to prevent key repeat
+            state = PRELEVEL3;       // Go to pre-level screen before level 3
+            enterPressed = true;     // Mark key as pressed
+        }
+    }
+    else {
+        enterPressed = false;  // Reset when key released
     }
     
-    // Alternative progression method (shortcut key)
+    // Alternative progression method (shortcut H key)
     if (Keyboard::isKeyPressed(Keyboard::Key::H)) {
-        state = PRELEVEL3;  // Also advance to pre-level screen
+        if (!hPressed) {  // Edge detection to prevent key repeat
+            state = PRELEVEL3;      // Also advance to pre-level screen
+            hPressed = true;        // Mark key as pressed
+        }
+    }
+    else {
+        hPressed = false;  // Reset when key released
     }
 }

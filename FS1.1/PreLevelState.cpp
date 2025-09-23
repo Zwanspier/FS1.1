@@ -48,6 +48,11 @@ void handlePreLevelState(RenderWindow& window, bool& running, GameState& current
         levelTitle = "Level 1: Speeding Lines";
         controlInstructions = {
             "Controls:",
+            "Watch the screen and press the highlighted key",
+            "",
+            "",
+            "Navigation:",
+            "ESC - Return to this screen",     // NEW: ESC functionality
             "M - Return to Menu",
             "F1 - Open Settings"
         };
@@ -57,10 +62,14 @@ void handlePreLevelState(RenderWindow& window, bool& running, GameState& current
         levelTitle = "Level 2: Dark Maze";
         controlInstructions = {
             "Controls:",
-            "W/A/S/D - Move",                    // Movement controls
-            "Enter - Next level (when at exit)", // Progression condition
-            "M - Return to Menu",                // Navigation
-            "F1 - Open Settings"                 // Settings access
+            "W/A/S/D - Move through the maze",           // Movement controls
+            "Find the exit to progress",                 // Objective
+            "",
+            "Navigation:",
+            "ESC - Return to this screen",               // NEW: ESC functionality
+            "Enter - Next level (when at exit)",        // Progression condition
+            "M - Return to Menu",                        // Navigation
+            "F1 - Open Settings"                         // Settings access
         };
         break;
         
@@ -68,17 +77,28 @@ void handlePreLevelState(RenderWindow& window, bool& running, GameState& current
         levelTitle = "Level 3: A Silent Drive";
         controlInstructions = {
             "Controls:",
-            "A/D - Steer",                       // Steering controls
-            "W/S - Speed up/slow down",          // Speed controls
-            "R - Restart (when game over)",      // Restart mechanism
-            "M - Return to Menu",                // Navigation
-            "F1 - Open Settings"                 // Settings access
+            "A/D - Steer left and right",               // Steering controls
+            "W/S - Speed up/slow down",                 // Speed controls
+            "",
+            "",
+            "Navigation:",
+            "ESC - Return to this screen",               // NEW: ESC functionality
+            "R - Restart (when game over)",             // Restart mechanism
+            "M - Return to Menu",                        // Navigation
+            "F1 - Open Settings"                         // Settings access
         };
         break;
         
     default:  // Fallback for unknown levels
         levelTitle = "Unknown Level";
-        controlInstructions = { "Press ENTER to continue" };
+        controlInstructions = { 
+            "Press ENTER to continue",
+            "",
+            "Navigation:",
+            "ESC - Return to this screen",
+            "M - Return to Menu",
+            "F1 - Open Settings"
+        };
         break;
     }
     
@@ -91,22 +111,37 @@ void handlePreLevelState(RenderWindow& window, bool& running, GameState& current
     // Center title horizontally and position in upper third of screen
     auto titleBounds = title.getLocalBounds();
     title.setOrigin(Vector2f(titleBounds.size.x / 2.f, titleBounds.size.y / 2.f));
-    title.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 3.f));
+    title.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 4.f));
     window.draw(title);
     
     //=== CONTROL INSTRUCTIONS RENDERING ===
     // Display control instruction list in center of screen
+    float baseY = window.getSize().y / 2.f - (controlInstructions.size() * 22.5f);
+    
     for (size_t i = 0; i < controlInstructions.size(); ++i) {
-        Text controlText(font, controlInstructions[i], 36);
+        Text controlText(font, controlInstructions[i], 28);
         
-        // Style first line (header) differently from individual controls
-        controlText.setFillColor(i == 0 ? Color::Yellow : Color::White);
-        if (i == 0) controlText.setStyle(Text::Bold);  // Bold header
+        // Style different types of lines with different colors and formatting
+        if (controlInstructions[i] == "Controls:" || controlInstructions[i] == "Navigation:") {
+            // Header lines
+            controlText.setFillColor(Color::Yellow);
+            controlText.setStyle(Text::Bold);
+        } else if (controlInstructions[i].empty()) {
+            // Skip empty lines (spacing)
+            continue;
+        } else if (controlInstructions[i].find("ESC") == 0) {
+            // Highlight the new ESC functionality
+            controlText.setFillColor(Color::Green);
+            controlText.setStyle(Text::Bold);
+        } else {
+            // Regular instruction lines
+            controlText.setFillColor(Color::White);
+        }
         
         // Center text horizontally, stack vertically with spacing
         auto bounds = controlText.getLocalBounds();
         controlText.setOrigin(Vector2f(bounds.size.x / 2.f, 0));
-        controlText.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y / 2.f + i * 45.f));
+        controlText.setPosition(Vector2f(window.getSize().x / 2.f, baseY + i * 35.f));
         window.draw(controlText);
     }
     
@@ -119,7 +154,7 @@ void handlePreLevelState(RenderWindow& window, bool& running, GameState& current
     // Center in lower portion of screen
     auto continueBounds = continueText.getLocalBounds();
     continueText.setOrigin(Vector2f(continueBounds.size.x / 2.f, continueBounds.size.y / 2.f));
-    continueText.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y * 0.8f));
+    continueText.setPosition(Vector2f(window.getSize().x / 2.f, window.getSize().y * 0.85f));
     window.draw(continueText);
     
     //=== INPUT HANDLING SYSTEM ===

@@ -9,7 +9,7 @@ using namespace std;
 // These control various aspects of gameplay, performance, and user experience
 
 //=== PERFORMANCE CONFIGURATION ===
-int framerateIndex = 1;                 // Default to 60 FPS (index 1 in options array)
+int framerateIndex = 4;                 // Default to 240
 int framerateOptions[] = { 30, 60, 120, 144, 240 };  // Available framerate options for text speed
 bool vsyncEnabled = true;               // Vertical sync enabled by default for smooth rendering
 
@@ -78,6 +78,7 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
     // Static variables maintain menu state between function calls
     static int selected = 0;           // Currently selected menu item index
     static int previousSelected = -1;  // Previous selection for hover sound detection
+    static bool initialized = false;   // **NEW: Initialization flag to prevent flashing**
     
     // Input state tracking to prevent key repeat issues
     static bool upPressed = false, downPressed = false;           // Vertical navigation
@@ -87,6 +88,26 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
 
     //=== EXTERNAL STATE ACCESS ===
     extern GameState previousState;  // Access to return state when exiting settings
+
+    //=== INITIALIZATION ===
+    // **NEW: One-time setup when entering the state**
+    if (!initialized) {
+        // Reset input states to prevent carried-over key presses from previous state
+        upPressed = Keyboard::isKeyPressed(Keyboard::Key::W);
+        downPressed = Keyboard::isKeyPressed(Keyboard::Key::S);
+        leftPressed = Keyboard::isKeyPressed(Keyboard::Key::A);
+        rightPressed = Keyboard::isKeyPressed(Keyboard::Key::D);
+        enterPressed = Keyboard::isKeyPressed(Keyboard::Key::Enter);
+        escapePressed = Keyboard::isKeyPressed(Keyboard::Key::Escape);
+        mouseLeftPressed = Mouse::isButtonPressed(Mouse::Button::Left);
+        mouseRightPressed = Mouse::isButtonPressed(Mouse::Button::Right);
+        
+        // Reset selection to first item for consistency
+        selected = 0;
+        previousSelected = -1;
+        
+        initialized = true;
+    }
 
     //=== MENU STRUCTURE DEFINITION ===
     // Define all available settings options in display order
@@ -105,11 +126,17 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
     static Font font;
     static bool fontLoaded = false;
     if (!fontLoaded) {
-        font.openFromFile("arial.ttf");  // Load standard application font
-        fontLoaded = true;               // Mark as loaded
+        if (font.openFromFile("arial.ttf")) {  // **IMPROVED: Check if font loading succeeded**
+            fontLoaded = true;               // Mark as loaded only on success
+        } else {
+            // Fallback: try to use default font or handle gracefully
+            font = Font();  // Use default font if available
+            fontLoaded = true;  // Still mark as loaded to prevent repeated attempts
+        }
     }
 
     //=== RENDERING PREPARATION ===
+    // **IMPROVED: Clear with same background as other states for consistency**
     window.clear(Color::Black);  // Clear screen with black background
 
     //=== MENU TEXT RENDERING SYSTEM ===
@@ -231,6 +258,7 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
             // Return to previous menu
             navSounds.playBack();
             state = previousState;
+            initialized = false;  // **NEW: Reset for potential re-entry**
         }
     }
     else if (!isMouseLeftButtonPressed) {
@@ -284,9 +312,6 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
     else if (!isMouseRightButtonPressed) {
         mouseRightPressed = false;  // Reset when button released
     }
-
-    //=== FRAME PRESENTATION ===
-    window.display();  // Present completed settings menu frame
 
     //=== KEYBOARD NAVIGATION SYSTEM ===
     // Handle keyboard input for menu navigation with sound feedback
@@ -418,6 +443,7 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
                 // Return to previous menu
                 navSounds.playBack();
                 state = previousState;
+                initialized = false;  // **NEW: Reset for potential re-entry**
             }
             enterPressed = true;  // Mark key as pressed
         }
@@ -430,8 +456,13 @@ void handleSettingsState(RenderWindow& window, bool& running, GameState& state)
         if (!escapePressed) {  // Edge detection to prevent key repeat
             navSounds.playBack();       // Play back navigation sound
             state = previousState;      // Return to calling state
+            initialized = false;        // **NEW: Reset for potential re-entry**
             escapePressed = true;       // Mark key as pressed
         }
     }
     else escapePressed = false;  // Reset when key released
+
+    //=== FRAME PRESENTATION ===
+    // **MOVED: Display at the end after all rendering is complete**
+    window.display();  // Present completed settings menu frame
 }

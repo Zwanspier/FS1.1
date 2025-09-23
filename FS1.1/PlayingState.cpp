@@ -28,6 +28,11 @@ void handlePlayingState(RenderWindow& window, bool& running, GameState& state)
     static float textX2 = 0.0f;              // Secondary position for seamless scrolling
     static Clock clock;                      // Frame timing system
     
+    // Input state tracking for proper edge detection
+    static bool mPressed = false;            // M key state
+    static bool f1Pressed = false;           // F1 key state
+    static bool escPressed = false;          // ESC key state (NEW)
+    
     // External references to global game state
     extern GameState previousState;    // For returning from settings menu
     extern int framerateOptions[];     // Available framerate settings
@@ -43,7 +48,7 @@ void handlePlayingState(RenderWindow& window, bool& running, GameState& state)
     static set<Keyboard::Key> reservedKeys = {
         Keyboard::Key::M,        // Return to menu
         Keyboard::Key::F1,       // Open settings
-        Keyboard::Key::Escape    // System escape key
+        Keyboard::Key::Escape    // Return to pre-level screen (NEW)
         // Additional reserved keys can be added here as needed
     };
     
@@ -98,7 +103,7 @@ void handlePlayingState(RenderWindow& window, bool& running, GameState& state)
     // Adjust scrolling speed based on framerate setting
     // Higher framerate = slower speed for consistent visual movement
     if (framerate > 0)
-        speed = baseSpeed * (100.0f / framerate);
+        speed = baseSpeed / (100.0f / framerate);
     else
         speed = baseSpeed * 2.0f;  // Special case for unlimited framerate
     
@@ -156,15 +161,40 @@ void handlePlayingState(RenderWindow& window, bool& running, GameState& state)
         keyPressed = false;  // Reset press state when key released
     }
     
-    // Navigation controls
-    if (Keyboard::isKeyPressed(Keyboard::Key::M)) {
-        state = MENU;        // Return to main menu
-        keyChosen = false;   // Reset key selection
+    // NEW: Return to pre-level screen (ESC key)
+    if (Keyboard::isKeyPressed(Keyboard::Key::Escape)) {
+        if (!escPressed) {  // Edge detection to prevent key repeat
+            state = PRELEVEL1;     // Return to Level 1 pre-level screen
+            keyChosen = false;     // Reset key selection for restart
+            escPressed = true;     // Mark key as pressed
+        }
+    }
+    else {
+        escPressed = false;  // Reset when key released
     }
     
+    // Return to main menu (M key)
+    if (Keyboard::isKeyPressed(Keyboard::Key::M)) {
+        if (!mPressed) {  // Edge detection to prevent key repeat
+            state = MENU;        // Return to main menu
+            keyChosen = false;   // Reset key selection
+            mPressed = true;     // Mark key as pressed
+        }
+    }
+    else {
+        mPressed = false;  // Reset when key released
+    }
+    
+    // Open settings menu (F1 key)
     if (Keyboard::isKeyPressed(Keyboard::Key::F1)) {
-        previousState = state;  // Store current state for return
-        state = SETTINGS;       // Open settings menu
-        keyChosen = false;      // Reset key selection
+        if (!f1Pressed) {  // Edge detection to prevent key repeat
+            previousState = state;  // Store current state for return
+            state = SETTINGS;       // Open settings menu
+            keyChosen = false;      // Reset key selection
+            f1Pressed = true;       // Mark key as pressed
+        }
+    }
+    else {
+        f1Pressed = false;  // Reset when key released
     }
 }
